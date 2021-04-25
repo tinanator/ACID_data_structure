@@ -1,5 +1,8 @@
 #pragma once
 #include <iostream>
+#include <shared_mutex>
+#include <mutex>
+#include <condition_variable>
 
 template<typename T>
 class Iterator;
@@ -191,13 +194,27 @@ public:
 		return endNode->prev->val;
 	}
 
-private:
+	std::shared_mutex& getMutex()
+	{
+		return m;
+	}
 
-	Node<int>* CreateNewNode() {
-	
+	std::condition_variable& getCondVar()
+	{
+		return cv;
 	}
 
 private:
+
+	Node<int>* CreateNewNode() {
+
+	}
+
+private:
+
+	std::shared_mutex m;
+
+	std::condition_variable cv;
 
 	int _size;
 

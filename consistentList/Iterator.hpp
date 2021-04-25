@@ -28,9 +28,10 @@ public:
 	}
 
 	Iterator<T>& operator ++() {
+		std::unique_lock<std::shared_mutex> lock(list->getMutex());
 		Node<T>* prev = pnode;
-		list->acquire(&pnode, pnode->next); 
-		list->release(prev); 
+		list->acquire(&pnode, pnode->next);
+		list->release(prev);
 		return *this;
 	}
 
@@ -41,9 +42,10 @@ public:
 	}
 
 	Iterator<T>& operator --() {
+		std::unique_lock<std::shared_mutex> lock(list->getMutex());
 		Node<T>* prev = pnode;
 		list->acquire(&pnode, pnode->prev);
-		list->release(prev); 
+		list->release(prev);
 		return *this;
 	}
 
@@ -62,6 +64,8 @@ public:
 	}
 
 	int& operator *() {
+		std::shared_lock<std::shared_mutex> lock(list->getMutex());
+		//list->getCondVar().wait(lock);
 		return pnode->val;
 	}
 
