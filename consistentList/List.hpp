@@ -11,7 +11,7 @@ template<typename T>
 struct Node
 {
 	T val;
-	int countRef = 0;
+	std::atomic<int> countRef = 0;
 	bool deleted = false;
 	Node* next;
 	Node* prev;
@@ -26,9 +26,11 @@ class ConsistentList
 {
 public:
 
+	friend Iterator<T>;
 
 	ConsistentList() {
 		_size = 0;
+		realSize = _size;
 		beginNode = new Node<T>();
 		endNode = new Node<T>();
 		beginNode->countRef = 1;
@@ -43,6 +45,7 @@ public:
 
 	ConsistentList(std::initializer_list<T> init) {
 		_size = 0;
+		realSize = _size;
 		beginNode = new Node<T>();
 		endNode = new Node<T>();
 		beginNode->countRef = 1;
@@ -71,11 +74,15 @@ public:
 		delete endNode;
 		tail = nullptr;
 		head = nullptr;
+		_size = 0;
+		realSize = 0;
 	}
 
 
 	void push_back(T val) {
+		std::unique_lock<std::shared_mutex> lock(m);
 		_size++;
+		realSize = _size;
 		Node<T>* newNode = new Node<T>();
 		newNode->val = val;
 		newNode->prev = endNode->prev;
@@ -87,7 +94,9 @@ public:
 	}
 
 	void push_front(T val) {
+		std::unique_lock<std::shared_mutex> lock(m);
 		_size++;
+		realSize = _size;
 		Node<T>* newNode = new Node<T>();
 		newNode->val = val;
 		newNode->next = beginNode->next;
@@ -98,26 +107,37 @@ public:
 	}
 
 	Iterator<T> insert(Iterator<T> pos, const T& val) {
+		std::unique_lock<std::shared_mutex> lock(m);
 		_size++;
+		realSize = _size;
 		Node<T>* newNode = new Node<T>();
 		newNode->val = val;
-		newNode->next = pos.getPtr();
-		newNode->prev = pos.getPtr()->prev;
-		pos.getPtr()->prev = newNode;
+		newNode->next = pos.pnode;
+		newNode->prev = pos.pnode;
+		pos.pnode->prev = newNode;
 		newNode->prev->next = newNode;
 		newNode->countRef += 2;
+		std::cout << newNode->countRef << " " << newNode->val << std::endl;
 		return pos;
 	}
 
+	int getRealSize() {
+		std::shared_lock<std::shared_mutex> lock(m);
+		return realSize;
+	}
+
 	Node<T>* getBeginNode() {
+		std::shared_lock<std::shared_mutex> lock(m);
 		return beginNode;
 	}
 
 	Node<T>* getEndNode() {
+		std::shared_lock<std::shared_mutex> lock(m);
 		return endNode;
 	}
 
 	Iterator<T> begin() {
+		std::unique_lock<std::shared_mutex> lock(m);
 		if (_size > 0) {
 			Iterator<T> iter(&beginNode->next, this);
 			return iter;
@@ -129,17 +149,85 @@ public:
 	}
 
 	Iterator<T> end() {
+		std::unique_lock<std::shared_mutex> lock(m);
 		Iterator<T> iter(&endNode, this);
 		return iter;
 	}
-
+	
 	int size() {
+		std::shared_lock<std::shared_mutex> lock(m);
 		return _size;
 	}
 
 	bool empty() {
+		std::shared_lock<std::shared_mutex> lock(m);
 		return _size == 0;
 	}
+
+	
+
+	void advance(Iterator<T>& it, int n) {
+		while (n > 0) {
+			--n;
+			++it;
+		}
+		while (n < 0) {
+			++n;
+			--it;
+		}
+	}
+
+
+	void erase(Iterator<T>& pos) {
+		std::unique_lock<std::shared_mutex> lock(m);
+		_size--;
+		Node<T>* node = pos.pnode;
+		node->deleted = true;
+		std::cout << _size << ' ' << node->val << ' ' << node->countRef << std::endl;
+		if (node->next->prev == node) {
+			node->next->prev = node->prev;
+			node->prev->countRef++;
+			node->countRef--;
+		}
+		if (node->prev->next == node) {
+			node->prev->next = node->next;
+			node->next->countRef++;
+			node->countRef--;
+		}
+
+		Node<T>* prev = pos.pnode;
+		acquire(&prev, pos.pnode->next);
+		release(prev);
+	}
+
+	int front() {
+		std::shared_lock<std::shared_mutex> lock(m);
+		if (beginNode->next == endNode) {
+			throw std::runtime_error("empty list");
+		}
+		return beginNode->next->val;
+	}
+
+	int back() {
+		std::shared_lock<std::shared_mutex> lock(m);
+		if (endNode->prev == beginNode) {
+			throw std::runtime_error("empty list");
+		}
+		return endNode->prev->val;
+	}
+
+	std::shared_mutex& getMutex()
+	{
+		return m;
+	}
+
+	std::condition_variable getCondVar()
+	{
+		std::shared_lock<std::shared_mutex> lock(m);
+		return cv;
+	}
+
+private:
 
 	void release(Node<T>* node) {
 		if (node) {
@@ -149,8 +237,9 @@ public:
 				node->next = nullptr;
 				release(node->prev);
 				node->prev = nullptr;
-				std::cout << "node " << node->val << " deleted" << std::endl;
+				//std::cout << "node " << node->val << " deleted" << std::endl;
 				delete node;
+				realSize--;
 			}
 		}
 	}
@@ -163,60 +252,15 @@ public:
 		(*curPtr)->countRef++;
 	}
 
-	void erase(Iterator<T>& pos) {
-		_size--;
-		Node<T>* node = pos.getPtr();
-		node->deleted = true;
-		if (node->next->prev == node) {
-			node->next->prev = node->prev;
-			node->prev->countRef++;
-			node->countRef--;
-		}
-		if (node->prev->next == node) {
-			node->prev->next = node->next;
-			node->next->countRef++;
-			node->countRef--;
-		}
-		pos++;
-	}
-
-	int front() {
-		if (beginNode->next == endNode) {
-			throw std::runtime_error("empty list");
-		}
-		return beginNode->next->val;
-	}
-
-	int back() {
-		if (endNode->prev == beginNode) {
-			throw std::runtime_error("empty list");
-		}
-		return endNode->prev->val;
-	}
-
-	std::shared_mutex& getMutex()
-	{
-		return m;
-	}
-
-	std::condition_variable& getCondVar()
-	{
-		return cv;
-	}
-
-private:
-
-	Node<int>* CreateNewNode() {
-
-	}
-
 private:
 
 	std::shared_mutex m;
 
-	std::condition_variable cv;
+	std::condition_variable_any cv;
 
 	int _size;
+
+	int realSize;
 
 	Node<T>* head;
 

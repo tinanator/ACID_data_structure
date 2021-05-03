@@ -5,6 +5,9 @@ template<typename T>
 class Iterator
 {
 public:
+
+
+	friend ConsistentList<T>;
 	Iterator<T>() {
 		pnode = nullptr;
 	}
@@ -24,6 +27,7 @@ public:
 	}
 
 	Node<T>* getPtr() {
+		std::shared_lock<std::shared_mutex> lock(list->getMutex());
 		return pnode;
 	}
 
@@ -35,8 +39,8 @@ public:
 		return *this;
 	}
 
-	Iterator<T> operator ++(T) {
-		Iterator<int> iterator = *this;
+	Iterator<T> operator ++(int) {
+		Iterator<T> iterator = *this;
 		++(*this);
 		return *this;
 	}
@@ -49,27 +53,41 @@ public:
 		return *this;
 	}
 
-	Iterator<T> operator --(T) {
-		Iterator<int> iterator = *this;
+	Iterator<T> operator --(int) {
+		Iterator<T> iterator = *this;
 		--(*this);
 		return *this;
 	}
 
 	friend bool operator ==(const Iterator<T>& lhs, const Iterator<T>& rhs) {
+		std::shared_lock<std::shared_mutex> lock1(lhs.list->getMutex());
+		std::shared_lock<std::shared_mutex> lock2(rhs.list->getMutex());
 		return lhs.pnode == rhs.pnode;
 	}
 
 	friend bool operator !=(const Iterator<T>& lhs, const Iterator<T>& rhs) {
+		std::shared_lock<std::shared_mutex> lock1(lhs.list->getMutex());
+		std::shared_lock<std::shared_mutex> lock2(rhs.list->getMutex());
 		return !(lhs.pnode == rhs.pnode);
 	}
 
-	int& operator *() {
+	T& operator *() {
 		std::shared_lock<std::shared_mutex> lock(list->getMutex());
-		//list->getCondVar().wait(lock);
 		return pnode->val;
 	}
 
+	T& get() {
+		std::shared_lock<std::shared_mutex> lock(list->getMutex());
+		return pnode->val;
+	}
+
+	void set(T val) {
+		std::unique_lock<std::shared_mutex> lock(list->getMutex());
+		pnode->val = val;
+	}
+
 	Iterator<T>& operator=(Iterator<T>& other) {
+		std::unique_lock<std::shared_mutex> lock(list->getMutex());
 		if (this == &other) {
 			return *this;
 		}
@@ -81,6 +99,7 @@ public:
 
 	Iterator<T>& operator=(Iterator<T>&& other) noexcept
 	{
+		std::unique_lock<std::shared_mutex> lock(list->getMutex());
 		if (this == &other)
 			return *this;
 
