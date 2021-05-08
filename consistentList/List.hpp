@@ -108,16 +108,25 @@ public:
 
 	Iterator<T> insert(Iterator<T> pos, const T& val) {
 		std::unique_lock<std::shared_mutex> lock(m);
-		_size++;
-		realSize = _size;
 		Node<T>* newNode = new Node<T>();
 		newNode->val = val;
-		newNode->next = pos.pnode;
-		newNode->prev = pos.pnode;
-		pos.pnode->prev = newNode;
-		newNode->prev->next = newNode;
+		
+		if (pos.pnode == beginNode) {
+			newNode->prev = pos.pnode;
+			newNode->next = pos.pnode->next;
+			pos.pnode->next = newNode;
+			newNode->next->prev = newNode;
+		}
+		else {
+			newNode->next = pos.pnode;
+			newNode->prev = pos.pnode->prev;
+			pos.pnode->prev = newNode;
+			newNode->prev->next = newNode;
+		}
+		_size++;
+		realSize = _size;
+
 		newNode->countRef += 2;
-		std::cout << newNode->countRef << " " << newNode->val << std::endl;
 		return pos;
 	}
 
@@ -180,10 +189,14 @@ public:
 
 	void erase(Iterator<T>& pos) {
 		std::unique_lock<std::shared_mutex> lock(m);
-		_size--;
 		Node<T>* node = pos.pnode;
-		node->deleted = true;
-		std::cout << _size << ' ' << node->val << ' ' << node->countRef << std::endl;
+		if (node == endNode || node == beginNode) {
+			return;
+		}
+		if (!node->deleted) {
+			_size--;
+			node->deleted = true;
+		}
 		if (node->next->prev == node) {
 			node->next->prev = node->prev;
 			node->prev->countRef++;
@@ -196,7 +209,7 @@ public:
 		}
 
 		Node<T>* prev = pos.pnode;
-		acquire(&prev, pos.pnode->next);
+		acquire(&(pos.pnode), pos.pnode->next);
 		release(prev);
 	}
 

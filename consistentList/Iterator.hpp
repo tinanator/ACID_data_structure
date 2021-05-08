@@ -60,14 +60,24 @@ public:
 	}
 
 	friend bool operator ==(const Iterator<T>& lhs, const Iterator<T>& rhs) {
-		std::shared_lock<std::shared_mutex> lock1(lhs.list->getMutex());
-		std::shared_lock<std::shared_mutex> lock2(rhs.list->getMutex());
+		if (lhs.list == rhs.list) {
+			std::shared_lock<std::shared_mutex> lock1(lhs.list->getMutex());
+		}
+		else {
+			std::shared_lock<std::shared_mutex> lock1(lhs.list->getMutex());
+			std::shared_lock<std::shared_mutex> lock2(rhs.list->getMutex());
+		}
 		return lhs.pnode == rhs.pnode;
 	}
 
 	friend bool operator !=(const Iterator<T>& lhs, const Iterator<T>& rhs) {
-		std::shared_lock<std::shared_mutex> lock1(lhs.list->getMutex());
-		std::shared_lock<std::shared_mutex> lock2(rhs.list->getMutex());
+		if (lhs.list == rhs.list) {
+			std::shared_lock<std::shared_mutex> lock1(lhs.list->getMutex());
+		}
+		else {
+			std::shared_lock<std::shared_mutex> lock1(lhs.list->getMutex());
+			std::shared_lock<std::shared_mutex> lock2(rhs.list->getMutex());
+		}
 		return !(lhs.pnode == rhs.pnode);
 	}
 
@@ -87,7 +97,14 @@ public:
 	}
 
 	Iterator<T>& operator=(Iterator<T>& other) {
-		std::unique_lock<std::shared_mutex> lock(list->getMutex());
+		if (list == other.list) {
+			std::shared_lock<std::shared_mutex> lock1(list->getMutex());
+		}
+		else {
+			std::unique_lock<std::shared_mutex> lock(list->getMutex());
+			std::shared_lock<std::shared_mutex> lock2(other.list->getMutex());
+		}
+
 		if (this == &other) {
 			return *this;
 		}
@@ -99,7 +116,14 @@ public:
 
 	Iterator<T>& operator=(Iterator<T>&& other) noexcept
 	{
-		std::unique_lock<std::shared_mutex> lock(list->getMutex());
+		if (list == other.list) {
+			std::shared_lock<std::shared_mutex> lock1(list->getMutex());
+		}
+		else {
+			std::unique_lock<std::shared_mutex> lock(list->getMutex());
+			std::shared_lock<std::shared_mutex> lock2(other.list->getMutex());
+		}
+
 		if (this == &other)
 			return *this;
 
