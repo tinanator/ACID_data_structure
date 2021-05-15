@@ -27,7 +27,6 @@ public:
 	}
 
 	Node<T>* getPtr() {
-		std::shared_lock<std::shared_mutex> lock(list->getMutex());
 		return pnode;
 	}
 

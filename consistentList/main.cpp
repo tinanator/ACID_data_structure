@@ -386,31 +386,19 @@ TEST_CASE("Consistent 1 thread list") {
 }
 
 
-int i = 0;
-
-void write(Iterator<int>& it, ConsistentList<int>& list, std::condition_variable_any& cv, int val) {
-	std::unique_lock<std::shared_mutex> lock(list.getMutex());
-	cv.wait(lock);
-	i++;
-	*it = val;
-}
-
-void read(Iterator<int>& it, ConsistentList<int>& list, std::condition_variable_any& cv, std::promise<int>&& p) {
-	std::shared_lock<std::shared_mutex> lock(list.getMutex());
-	cv.wait(lock);
-	p.set_value(*it);
-}
-
 TEST_CASE("Multi thread") {
 
 	SECTION("push") {
+
+		std::cout << "push..." << std::endl;
+
 		ConsistentList<std::pair<int, int>> list;
 
 		std::vector<std::thread> threads;
 
-		int threadCount = 1000;
+		int threadCount = 100;
 
-		int pushCount = 20;
+		int pushCount = 2;
 
 		auto push = [&](int threadNum) {
 			for (int i = 0; i < pushCount; i++) {
@@ -442,7 +430,10 @@ TEST_CASE("Multi thread") {
 
 	}
 
-	SECTION("HZ") {
+	SECTION("insert erase and move") {
+
+		std::cout << "insert erase and move..." << std::endl;
+
 		ConsistentList<int> list;
 
 		int listSize = 100;
@@ -499,72 +490,82 @@ TEST_CASE("Multi thread") {
 
 	}
 
-	//SECTION("change elements and read") {
-	//	ConsistentList<int> list;
+	SECTION("move iterators") {
 
-	//	int listSize = 20;
+		std::cout << "move iterators..." << std::endl;
 
-	//	for (int i = 0; i < listSize; i++) {
-	//		list.push_back(i);
-	//	}
+		ConsistentList<int> list;
 
+		int listSize = 100;
 
-	//	std::condition_variable_any cv;
+		int threadCount = 1000;
 
-	//	std::shared_mutex mutex;
+		int iteratorsPerThread = 10;
 
-	//	std::atomic<bool> isDataReady{ false };
+		for (int i = 0; i < listSize; i++) {
+			list.push_back(i);
+		}
 
-	//	int threadCounts = listSize;
+		std::vector<std::thread> threads;
 
-	//	std::atomic<int> threadsRead{ threadCounts };
+		auto moveForward = [&]() {
+			std::vector<Iterator<int>> iters;
+			for (int i = 0; i < iteratorsPerThread; i++) {
+				auto it = list.begin();
+				int pos = rand() % list.size();
+				list.advance(it, pos);
+				iters.push_back(it);
+			}
 
-	//	std::vector<std::thread> threads;
+			int count = iters.size();
 
-	//	std::vector<int> savedValues(threadCounts, 0);
+			for (auto& it : iters) {
+				while (it != list.end()) {
+					it++;
+				}
+			}
 
-	//	std::atomic<int> threadNumber = 0;
+		};
 
-	//	for (int i = 0; i < threadCounts; i++) {
+		auto moveBack = [&]() {
+			std::vector<Iterator<int>> iters;
+			for (int i = 0; i < iteratorsPerThread; i++) {
+				auto it = list.begin();
+				int pos = rand() % list.size();
+				list.advance(it, pos);
+				iters.push_back(it);
+			}
 
-	//		threads.push_back(std::thread([&, i] {
+			int count = iters.size();
 
-	//			std::shared_lock<std::shared_mutex> lock(mutex);
-	//			Iterator<int> it = list.begin();
-	//			cv.wait(lock, [&] { return isDataReady.load(); });
-	//			list.advance(it, i);
-	//			savedValues[i] = *it;
-	//			threadsRead++;
-	//			cv.notify_all();
+			for (auto& it : iters) {
+				while (it != list.begin()) {
+					it--;
+				}
+			}
 
+		};
 
-	//		}));
-	//	}
+		for (int i = 0; i < threadCount / 2; i++) {
+			threads.push_back(std::thread(moveForward));
+		}
 
-	//	std::thread writer([&] {
-	//					
-	//		std::unique_lock<std::shared_mutex> lock(mutex);
-	//			
-	//		for (auto it = list.begin(); it != list.end(); it++) {
-	//			it.set(it.get() * 10);
-	//		}
-	//		threadsRead = 0;
+		for (int i = 0; i < threadCount / 2; i++) {
+			threads.push_back(std::thread(moveBack));
+		}
 
-	//		isDataReady = true;
-	//		cv.notify_all();
-	//		cv.wait(lock, [&] {return threadsRead.load() == threadCounts; });
-	//		threadsRead = 0;
-	//		for (int k = 0; k < savedValues.size(); k++) {
-	//			REQUIRE(savedValues[k] == k * 10);
-	//		}
+		for (auto& th : threads) {
+			th.join();
+		}
+		
+		Iterator<int> it = list.begin();
+		it++;
 
-	//	});
-	//	for (auto& t : threads) {
-	//		t.join();
-	//	}
-	//	writer.join();
-
-	//}
+		while (it != list.end()) {
+			REQUIRE(it.getPtr()->countRef == 3);
+			it++;
+		}
+	}
 	
 	SECTION("insert and erase") {
 
@@ -580,7 +581,7 @@ TEST_CASE("Multi thread") {
 
 		int threadCount = 1000;
 
-		int elementsCount = 10;
+		int elementsCount = 100;
 
 		std::atomic<int> threadsFinished{0};
 

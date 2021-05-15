@@ -3,6 +3,7 @@
 #include <shared_mutex>
 #include <mutex>
 #include <condition_variable>
+#include <queue>
 
 template<typename T>
 class Iterator;
@@ -176,13 +177,18 @@ public:
 	
 
 	void advance(Iterator<T>& it, int n) {
+		std::unique_lock<std::shared_mutex> lock(m);
 		while (n > 0) {
 			--n;
-			++it;
+			Node<T>* prev = it.pnode;
+			acquire(&it.pnode, it.pnode->next);
+			release(prev);
 		}
 		while (n < 0) {
 			++n;
-			--it;
+			Node<T>* prev = it.pnode;
+			acquire(&it.pnode, it.pnode->prev);
+			release(prev);
 		}
 	}
 
@@ -243,16 +249,30 @@ public:
 private:
 
 	void release(Node<T>* node) {
+		std::queue<Node<T>*> q;
+
 		if (node) {
 			node->countRef--;
 			if (node->countRef == 0) {
-				release(node->next);
+				q.push(node->next);
+				q.push(node->prev);
 				node->next = nullptr;
-				release(node->prev);
 				node->prev = nullptr;
-				//std::cout << "node " << node->val << " deleted" << std::endl;
 				delete node;
 				realSize--;
+				while (!q.empty()) {
+					Node<T>* n = q.front();
+					q.pop();
+					n->countRef--;
+					if (n->countRef == 0) {
+						q.push(n->next);
+						q.push(n->prev);
+						n->next = nullptr;
+						n->prev = nullptr;
+						delete n;
+						realSize--;
+					}
+				}
 			}
 		}
 	}
