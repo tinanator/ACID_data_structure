@@ -61,23 +61,27 @@ public:
 	friend bool operator ==(const Iterator<T>& lhs, const Iterator<T>& rhs) {
 		if (lhs.list == rhs.list) {
 			std::shared_lock<std::shared_mutex> lock1(lhs.list->getMutex());
+			return lhs.pnode == rhs.pnode;
 		}
 		else {
 			std::shared_lock<std::shared_mutex> lock1(lhs.list->getMutex());
 			std::shared_lock<std::shared_mutex> lock2(rhs.list->getMutex());
+			return lhs.pnode == rhs.pnode;
 		}
-		return lhs.pnode == rhs.pnode;
+
 	}
 
 	friend bool operator !=(const Iterator<T>& lhs, const Iterator<T>& rhs) {
 		if (lhs.list == rhs.list) {
 			std::shared_lock<std::shared_mutex> lock1(lhs.list->getMutex());
+			return !(lhs.pnode == rhs.pnode);
 		}
 		else {
 			std::shared_lock<std::shared_mutex> lock1(lhs.list->getMutex());
 			std::shared_lock<std::shared_mutex> lock2(rhs.list->getMutex());
+			return !(lhs.pnode == rhs.pnode);
 		}
-		return !(lhs.pnode == rhs.pnode);
+
 	}
 
 	T& operator *() {
@@ -98,37 +102,51 @@ public:
 	Iterator<T>& operator=(Iterator<T>& other) {
 		if (list == other.list) {
 			std::shared_lock<std::shared_mutex> lock1(list->getMutex());
+			if (this == &other) {
+				return *this;
+			}
+			pnode = other.pnode;
+			list = other.list;
+			pnode->countRef++;
+			return *this;
 		}
 		else {
 			std::unique_lock<std::shared_mutex> lock(list->getMutex());
 			std::shared_lock<std::shared_mutex> lock2(other.list->getMutex());
-		}
-
-		if (this == &other) {
+			if (this == &other) {
+				return *this;
+			}
+			pnode = other.pnode;
+			list = other.list;
+			pnode->countRef++;
 			return *this;
 		}
-		pnode = other.pnode;
-		list = other.list;
-		pnode->countRef++;
-		return *this;
 	}
 
 	Iterator<T>& operator=(Iterator<T>&& other) noexcept
 	{
 		if (list == other.list) {
 			std::shared_lock<std::shared_mutex> lock1(list->getMutex());
+
+			if (this == &other)
+				return *this;
+
+			pnode = std::exchange(other.pnode, nullptr);
+			list = std::exchange(other.list, nullptr);
+			return *this;
 		}
 		else {
 			std::unique_lock<std::shared_mutex> lock(list->getMutex());
 			std::shared_lock<std::shared_mutex> lock2(other.list->getMutex());
+
+			if (this == &other)
+				return *this;
+
+			pnode = std::exchange(other.pnode, nullptr);
+			list = std::exchange(other.list, nullptr);
+			return *this;
 		}
 
-		if (this == &other)
-			return *this;
-
-		pnode = std::exchange(other.pnode, nullptr);
-		list = std::exchange(other.list, nullptr);
-		return *this;
 	}
 
 private:
