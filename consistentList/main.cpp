@@ -15,9 +15,6 @@
 #include <latch>
 
 
-int main() {
-
-}
 
 TEST_CASE("Consistent 1 thread list") {
 
