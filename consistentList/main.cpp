@@ -3,295 +3,626 @@
 #include "List.hpp"
 #include "Iterator.hpp"
 #include <iostream>
+#include <future>
+#include <shared_mutex>
+#include <mutex>
+#include <condition_variable>
+#include <thread>
+#include <vector>
+#include <chrono>
+#include <atomic>
+#include <barrier>
+#include <latch>
 
 
-TEST_CASE("Begin() End() front() back()") {
-	ConsistentList<int> list;
-
-	Iterator<int> it = list.begin();
-
-	REQUIRE(it == list.end());
-
-	list.push_back(1);
-	list.push_back(2);
-	list.push_back(3);
-	list.push_back(4);
-
-	it = list.begin();
-
-	REQUIRE(*it == 1);
-
-	auto val = list.front();
-
-	REQUIRE(val == 1);
-
-	val = list.back();
-
-	REQUIRE(val == 4);
-}
-
-
-TEST_CASE("Initializing list") {
-	ConsistentList<int> list({1, 2, 3, 4, 5, 6});
-
-	auto val = list.front();
-
-	REQUIRE(val == 1);
-
-	val = list.back();
-
-	REQUIRE(val == 6);
-}
-
-TEST_CASE("erase") {
-	ConsistentList<int> list({ 1, 2, 3, 4 });
-
-	REQUIRE(list.size() == 4);
-
-	Iterator<int> it = list.begin();
-
-	list.erase(it);
-
-	REQUIRE(list.size() == 3);
-	REQUIRE(*it == 2);
-	REQUIRE(it.getPtr()->countRef == 3);
-	REQUIRE(it.getPtr()->prev == list.getBeginNode());
-
-	list.erase(it);
-
-	REQUIRE(list.size() == 2);
-	REQUIRE(*it == 3);
-	REQUIRE(it.getPtr()->countRef == 3);
-	REQUIRE(it.getPtr()->prev == list.getBeginNode());
-
-	list.erase(it);
-
-	REQUIRE(list.size() == 1);
-	REQUIRE(*it == 4);
-	REQUIRE(it.getPtr()->countRef == 3);
-	REQUIRE(it.getPtr()->prev == list.getBeginNode());
-
-	list.erase(it);
-
-	REQUIRE(list.size() == 0);
-	REQUIRE(it == list.end());
-}
-
-TEST_CASE("inc dec") {
-	ConsistentList<int> list({ 1, 2, 3, 4, 5, 6 });
-
-	auto it = list.begin();
-	REQUIRE(it.getPtr()->countRef == 3);
-	REQUIRE(it.getPtr()->next->countRef == 2);
-
-	it++;
-	REQUIRE(*it == 2);
-	REQUIRE(it.getPtr()->countRef == 3);
-	REQUIRE(it.getPtr()->prev->countRef == 2);
-
-	it++;
-	REQUIRE(*it == 3);
-	REQUIRE(it.getPtr()->countRef == 3);
-	REQUIRE(it.getPtr()->prev->countRef == 2);
-
-	++it;
-	REQUIRE(*it == 4);
-	REQUIRE(it.getPtr()->countRef == 3);
-	REQUIRE(it.getPtr()->prev->countRef == 2);
-
-	++it;
-	REQUIRE(*it == 5);
-	REQUIRE(it.getPtr()->countRef == 3);
-	REQUIRE(it.getPtr()->prev->countRef == 2);
-
-	it--;
-	REQUIRE(*it == 4);
-	REQUIRE(it.getPtr()->countRef == 3);
-	REQUIRE(it.getPtr()->next->countRef == 2);
-
-	it--;
-	REQUIRE(*it == 3);
-	REQUIRE(it.getPtr()->countRef == 3);
-	REQUIRE(it.getPtr()->next->countRef == 2);
-
-	--it;
-	REQUIRE(*it == 2);
-	REQUIRE(it.getPtr()->countRef == 3);
-	REQUIRE(it.getPtr()->next->countRef == 2);
-
-	--it;
-	REQUIRE(*it == 1);
-	REQUIRE(it.getPtr()->countRef == 3);
-	REQUIRE(it.getPtr()->next->countRef == 2);
-
-	REQUIRE((*it)++ == 1);
-	REQUIRE(*it == 2);
-
-	REQUIRE(++(*it) == 3);
-
-	REQUIRE((*it)-- == 3);
-	REQUIRE(*it == 2);
-
-	REQUIRE(--(*it) == 1);
+int main() {
 
 }
 
-TEST_CASE() {
-	ConsistentList<int> list({ 1, 2, 3, 4, 5, 6 });
+TEST_CASE("Consistent 1 thread list") {
 
-	auto it1 = list.begin();
+	SECTION("Begin() End() front() back()") {
+		ConsistentList<int> list;
+		Iterator<int> it = list.begin();
+		REQUIRE(it == list.end());
 
-	it1++;
-	it1++;
+		list.push_back(1);
+		list.push_back(2);
+		list.push_back(3);
+		list.push_back(4);
 
-	auto it2 = list.begin();
+		it = list.begin();
 
-	it2++;
-	it2++;
+		REQUIRE(*it == 1);
 
-	REQUIRE(it1.getPtr()->countRef == 4);
-	REQUIRE(it2.getPtr()->countRef == 4);
-	REQUIRE(it1 == it2);
+		auto val = list.front();
 
-	list.erase(it1);
-	REQUIRE(*it1 == 4);
-	REQUIRE(it1.getPtr()->next->val == 5);
-	REQUIRE(it1.getPtr()->prev->val == 2);
-	REQUIRE(it1.getPtr()->countRef == 4);
-	REQUIRE(it1.getPtr()->prev->countRef == 3);
+		REQUIRE(val == 1);
 
-	REQUIRE(it2.getPtr()->countRef == 1);
+		val = list.back();
 
-	list.erase(it1);
-	REQUIRE(*it1 == 5);
-	REQUIRE(it1.getPtr()->next->val == 6);
-	REQUIRE(it1.getPtr()->prev->val == 2);
-	REQUIRE(it1.getPtr()->prev->next->val == 5);
-	REQUIRE(it1.getPtr()->countRef == 4);
-	REQUIRE(it1.getPtr()->prev->countRef == 4);
+		REQUIRE(val == 4);
+	}
 
-	REQUIRE(it2.getPtr()->next->val == 4);
-	REQUIRE(it2.getPtr()->next->next->val == 5);
 
-	REQUIRE(it2.getPtr() != nullptr);
-	REQUIRE(it2.getPtr()->next != nullptr);
+	SECTION("Initializing list") {
+		ConsistentList<int> list({ 1, 2, 3, 4, 5, 6 });
 
-	it1--;
-	REQUIRE(*it1 == 2);
-	REQUIRE(it1.getPtr()->countRef == 5);
-	REQUIRE(it1.getPtr()->next->countRef == 3);
+		auto val = list.front();
 
-	list.erase(it1);
-	REQUIRE(*it1 == 5);
-	REQUIRE(it1.getPtr()->countRef == 5);
-	REQUIRE(it1.getPtr()->prev->val == 1);
-	REQUIRE(it1.getPtr()->prev->next->val == 5);
-	REQUIRE(it1.getPtr()->prev->countRef == 3);
+		REQUIRE(val == 1);
 
-	REQUIRE(it2.getPtr()->next->val == 4);
-	REQUIRE(it2.getPtr()->next->countRef == 1);
-	REQUIRE(it2.getPtr()->deleted);
-	REQUIRE(it2.getPtr()->prev->val == 2);
-	REQUIRE(it2.getPtr()->prev->countRef == 2);
-	REQUIRE(it2.getPtr()->deleted);
+		val = list.back();
 
-	list.erase(--it1);
-	REQUIRE(*it1 == 5);
-	REQUIRE(it1.getPtr()->countRef == 6);
-	REQUIRE(it1.getPtr()->prev == list.getBeginNode());
+		REQUIRE(val == 6);
+	}
 
-	list.erase(it1);
-	REQUIRE(*it1 == 6);
-	REQUIRE(it1.getPtr()->countRef == 4);
-	REQUIRE(it1.getPtr()->prev == list.getBeginNode());
+	SECTION("erase") {
+		ConsistentList<int> list({ 1, 2, 3, 4 });
 
-	list.erase(it1);
-	REQUIRE(it1 == list.end());
-	REQUIRE(list.empty());
+		REQUIRE(list.size() == 4);
 
-	
-	list.erase(it2);
-	REQUIRE(it2 == list.end());
+		Iterator<int> it = list.begin();
+
+		list.erase(it);
+
+		REQUIRE(list.size() == 3);
+		REQUIRE(*it == 2);
+		REQUIRE(it.getPtr()->countRef == 3);
+		REQUIRE(it.getPtr()->prev == list.getBeginNode());
+
+		list.erase(it);
+
+		REQUIRE(list.size() == 2);
+		REQUIRE(*it == 3);
+		REQUIRE(it.getPtr()->countRef == 3);
+		REQUIRE(it.getPtr()->prev == list.getBeginNode());
+
+		list.erase(it);
+
+		REQUIRE(list.size() == 1);
+		REQUIRE(*it == 4);
+		REQUIRE(it.getPtr()->countRef == 3);
+		REQUIRE(it.getPtr()->prev == list.getBeginNode());
+
+		list.erase(it);
+
+		REQUIRE(list.size() == 0);
+		REQUIRE(it == list.end());
+	}
+
+	SECTION("inc dec") {
+		ConsistentList<int> list({ 1, 2, 3, 4, 5, 6 });
+
+		auto it = list.begin();
+		REQUIRE(it.getPtr()->countRef == 3);
+		REQUIRE(it.getPtr()->next->countRef == 2);
+
+		it++;
+		REQUIRE(*it == 2);
+		REQUIRE(it.getPtr()->countRef == 3);
+		REQUIRE(it.getPtr()->prev->countRef == 2);
+
+		it++;
+		REQUIRE(*it == 3);
+		REQUIRE(it.getPtr()->countRef == 3);
+		REQUIRE(it.getPtr()->prev->countRef == 2);
+
+		++it;
+		REQUIRE(*it == 4);
+		REQUIRE(it.getPtr()->countRef == 3);
+		REQUIRE(it.getPtr()->prev->countRef == 2);
+
+		++it;
+		REQUIRE(*it == 5);
+		REQUIRE(it.getPtr()->countRef == 3);
+		REQUIRE(it.getPtr()->prev->countRef == 2);
+
+		it--;
+		REQUIRE(*it == 4);
+		REQUIRE(it.getPtr()->countRef == 3);
+		REQUIRE(it.getPtr()->next->countRef == 2);
+
+		it--;
+		REQUIRE(*it == 3);
+		REQUIRE(it.getPtr()->countRef == 3);
+		REQUIRE(it.getPtr()->next->countRef == 2);
+
+		--it;
+		REQUIRE(*it == 2);
+		REQUIRE(it.getPtr()->countRef == 3);
+		REQUIRE(it.getPtr()->next->countRef == 2);
+
+		--it;
+		REQUIRE(*it == 1);
+		REQUIRE(it.getPtr()->countRef == 3);
+		REQUIRE(it.getPtr()->next->countRef == 2);
+
+		REQUIRE((*it)++ == 1);
+		REQUIRE(*it == 2);
+
+		REQUIRE(++(*it) == 3);
+
+		REQUIRE((*it)-- == 3);
+		REQUIRE(*it == 2);
+
+		REQUIRE(--(*it) == 1);
+	}
+
+	SECTION("One more erase test") {
+		ConsistentList<int> list({ 1, 2, 3, 4, 5, 6 });
+
+		auto it1 = list.begin();
+
+		it1++;
+		it1++;
+
+		auto it2 = list.begin();
+
+		it2++;
+		it2++;
+
+		REQUIRE(it1.getPtr()->countRef == 4);
+		REQUIRE(it2.getPtr()->countRef == 4);
+		REQUIRE(it1 == it2);
+
+		list.erase(it1);
+		REQUIRE(*it1 == 4);
+		REQUIRE(it1.getPtr()->next->val == 5);
+		REQUIRE(it1.getPtr()->prev->val == 2);
+		REQUIRE(it1.getPtr()->countRef == 4);
+		REQUIRE(it1.getPtr()->prev->countRef == 3);
+
+		REQUIRE(it2.getPtr()->countRef == 1);
+
+		list.erase(it1);
+		REQUIRE(*it1 == 5);
+		REQUIRE(it1.getPtr()->next->val == 6);
+		REQUIRE(it1.getPtr()->prev->val == 2);
+		REQUIRE(it1.getPtr()->prev->next->val == 5);
+		REQUIRE(it1.getPtr()->countRef == 4);
+		REQUIRE(it1.getPtr()->prev->countRef == 4);
+
+		REQUIRE(it2.getPtr()->next->val == 4);
+		REQUIRE(it2.getPtr()->next->next->val == 5);
+
+		REQUIRE(it2.getPtr() != nullptr);
+		REQUIRE(it2.getPtr()->next != nullptr);
+
+		it1--;
+		REQUIRE(*it1 == 2);
+		REQUIRE(it1.getPtr()->countRef == 5);
+		REQUIRE(it1.getPtr()->next->countRef == 3);
+
+		list.erase(it1);
+		REQUIRE(*it1 == 5);
+		REQUIRE(it1.getPtr()->countRef == 5);
+		REQUIRE(it1.getPtr()->prev->val == 1);
+		REQUIRE(it1.getPtr()->prev->next->val == 5);
+		REQUIRE(it1.getPtr()->prev->countRef == 3);
+
+		REQUIRE(it2.getPtr()->next->val == 4);
+		REQUIRE(it2.getPtr()->next->countRef == 1);
+		REQUIRE(it2.getPtr()->deleted);
+		REQUIRE(it2.getPtr()->prev->val == 2);
+		REQUIRE(it2.getPtr()->prev->countRef == 2);
+		REQUIRE(it2.getPtr()->deleted);
+
+		list.erase(--it1);
+		REQUIRE(*it1 == 5);
+		REQUIRE(it1.getPtr()->countRef == 6);
+		REQUIRE(it1.getPtr()->prev == list.getBeginNode());
+
+		list.erase(it1);
+		REQUIRE(*it1 == 6);
+		REQUIRE(it1.getPtr()->countRef == 4);
+		REQUIRE(it1.getPtr()->prev == list.getBeginNode());
+
+		list.erase(it1);
+		REQUIRE(it1 == list.end());
+		REQUIRE(list.empty());
+
+
+		list.erase(it2);
+		REQUIRE(it2 == list.end());
+	}
+
+	SECTION("One more erase test") {
+		ConsistentList<int> list({ 1, 2, 3, 4, 5, 6 });
+
+		auto it1 = list.begin();
+
+		it1++;
+		it1++;
+
+		auto it2 = list.begin();
+
+		it2++;
+		it2++;
+
+		REQUIRE(it1.getPtr()->countRef == 4);
+		REQUIRE(it2.getPtr()->countRef == 4);
+		REQUIRE(it1 == it2);
+
+		list.erase(it1);
+		REQUIRE(*it1 == 4);
+		REQUIRE(it1.getPtr()->next->val == 5);
+		REQUIRE(it1.getPtr()->prev->val == 2);
+		REQUIRE(it1.getPtr()->countRef == 4);
+		REQUIRE(it1.getPtr()->prev->countRef == 3);
+
+		REQUIRE(it2.getPtr()->countRef == 1);
+
+		list.erase(it1);
+		REQUIRE(*it1 == 5);
+		REQUIRE(it1.getPtr()->next->val == 6);
+		REQUIRE(it1.getPtr()->prev->val == 2);
+		REQUIRE(it1.getPtr()->prev->next->val == 5);
+		REQUIRE(it1.getPtr()->countRef == 4);
+		REQUIRE(it1.getPtr()->prev->countRef == 4);
+
+		REQUIRE(it2.getPtr()->next->val == 4);
+		REQUIRE(it2.getPtr()->next->next->val == 5);
+
+		REQUIRE(it2.getPtr() != nullptr);
+		REQUIRE(it2.getPtr()->next != nullptr);
+
+		it1--;
+		REQUIRE(*it1 == 2);
+		REQUIRE(it1.getPtr()->countRef == 5);
+		REQUIRE(it1.getPtr()->next->countRef == 3);
+
+		list.erase(it1);
+		REQUIRE(*it1 == 5);
+		REQUIRE(it1.getPtr()->countRef == 5);
+		REQUIRE(it1.getPtr()->prev->val == 1);
+		REQUIRE(it1.getPtr()->prev->next->val == 5);
+		REQUIRE(it1.getPtr()->prev->countRef == 3);
+
+		REQUIRE(it2.getPtr()->next->val == 4);
+		REQUIRE(it2.getPtr()->next->countRef == 1);
+		REQUIRE(it2.getPtr()->deleted);
+		REQUIRE(it2.getPtr()->prev->val == 2);
+		REQUIRE(it2.getPtr()->prev->countRef == 2);
+		REQUIRE(it2.getPtr()->deleted);
+
+		list.erase(--it1);
+		REQUIRE(*it1 == 5);
+		REQUIRE(it1.getPtr()->countRef == 6);
+		REQUIRE(it1.getPtr()->prev == list.getBeginNode());
+
+		list.erase(it1);
+		REQUIRE(*it1 == 6);
+		REQUIRE(it1.getPtr()->countRef == 4);
+		REQUIRE(it1.getPtr()->prev == list.getBeginNode());
+
+		list.erase(it1);
+		REQUIRE(it1 == list.end());
+		REQUIRE(list.empty());
+
+
+		list.erase(it2);
+		REQUIRE(it2 == list.end());
+
+	}
+
+
+	SECTION("insert") {
+		ConsistentList<int> list;
+		Iterator<int> it = list.end();
+		list.insert(it, 1);
+		REQUIRE(it == list.end());
+		it--;
+		REQUIRE(*it == 1);
+		list.insert(it, 2);
+		REQUIRE(*it == 1);
+		it--;
+		REQUIRE(*it == 2);
+	}
+
+
+	SECTION("multi erase") {
+		ConsistentList<int> list;
+
+		list.push_back(1);
+		list.push_back(2);
+		list.push_back(3);
+		list.push_back(4);
+		list.push_back(5);
+		list.push_back(6);
+
+		Iterator<int> iter1 = list.begin();
+
+		iter1++;
+		iter1++;
+		iter1++;
+
+		Iterator<int> iter2 = iter1;
+
+		list.erase(iter1);
+
+		REQUIRE(*iter1 == 5);
+		REQUIRE(*iter2 == 4);
+		REQUIRE(iter1.getPtr()->countRef == 4);
+		REQUIRE(iter2.getPtr()->countRef == 1);
+		REQUIRE(iter1.getPtr()->prev->countRef == 3);
+
+
+		Iterator<int> iter3 = list.begin();
+
+		iter3++;
+		iter3++;
+
+		Iterator<int> iter4 = iter3;
+
+		list.erase(iter3);
+
+		REQUIRE(*iter3 == 5);
+		REQUIRE(*iter4 == 3);
+		REQUIRE(iter3.getPtr()->countRef == 6);
+		REQUIRE(iter4.getPtr()->countRef == 2);
+		REQUIRE(iter3.getPtr()->prev->countRef == 3);
+		REQUIRE(iter3.getPtr()->prev->val == 2);
+
+		list.erase(iter3);
+
+		list.erase(iter4);
+
+		list.erase(iter2);
+
+		Iterator<int> iter5 = list.begin();
+
+		Iterator<int> iter6 = list.begin();
+
+		list.erase(iter5);
+
+		list.erase(iter5);
+
+		list.erase(iter3);
+
+		list.erase(iter2);
+
+		list.erase(iter4);
+
+		list.erase(iter6);
+
+		list.erase(iter1);
+	}
 }
 
-TEST_CASE("Insert") {
-	ConsistentList<int> list;
-	Iterator<int> it = list.end();
-	list.insert(it, 1);
-	REQUIRE(it == list.end());
-	it--;
-	REQUIRE(*it == 1);
-	list.insert(it, 2);
-	REQUIRE(*it == 1);
-	it--;
-	REQUIRE(*it == 2);
-}
 
-TEST_CASE() {
+TEST_CASE("Multi thread") {
 
-	ConsistentList<int> list;
+	SECTION("push") {
 
-	list.push_back(1);
-	list.push_back(2);
-	list.push_back(3);
-	list.push_back(4);
-	list.push_back(5);
-	list.push_back(6);
+		std::cout << "push..." << std::endl;
 
-	Iterator<int> iter1 = list.begin();
+		ConsistentList<std::pair<int, int>> list;
 
-	iter1++;
-	iter1++;
-	iter1++;
+		std::vector<std::thread> threads;
 
-	Iterator<int> iter2 = iter1;
+		int threadCount = 100;
 
-	list.erase(iter1);
+		int pushCount = 2;
 
-	REQUIRE(*iter1 == 5);
-	REQUIRE(*iter2 == 4);
-	REQUIRE(iter1.getPtr()->countRef == 4);
-	REQUIRE(iter2.getPtr()->countRef == 1);
-	REQUIRE(iter1.getPtr()->prev->countRef == 3);
+		auto push = [&](int threadNum) {
+			for (int i = 0; i < pushCount; i++) {
+				list.push_back(std::pair<int, int>(threadNum, i));
+			}
+		};
+
+		for (int i = 0; i < threadCount; i++) {
+			threads.push_back(std::thread(push, i));
+		}
+
+		for (auto& th : threads) {
+			th.join();
+		}
+
+		REQUIRE(list.size() == pushCount * threadCount);
+
+		auto it = list.begin();
+		for (int i = 0; i < threadCount; i++) {
+			int el = 0;
+			for (int j = 0; j < pushCount * threadCount; j++) {
+				if (it.get().first == i) {
+					REQUIRE(it.get().second == el);
+					el++;
+				}
+				el = 0;
+			}
+		}
+
+	}
+
+	SECTION("insert erase and move") {
+
+		std::cout << "insert erase and move..." << std::endl;
+
+		ConsistentList<int> list;
+
+		int listSize = 100;
+
+		int threadCount = 1000;
+
+		for (int i = 0; i < listSize; i++) {
+			list.push_back(i);
+		}
+
+		std::latch creation_iterators{ threadCount };
+		std::latch erasing_iterators{ threadCount };
+
+		auto createIterators = [&]() {
+			std::vector<Iterator<int>> iterators;
+			for (int i = 0; i < 10; i++) {
+				auto it = list.begin();
+				int offset = rand() % list.size();
+				list.advance(it, offset);
+				iterators.push_back(it);
+			}
+			creation_iterators.count_down();
+			creation_iterators.wait();
+
+			for (int i = 0; i < 10; i++) {
+				if (i % 2 == 0) {
+					list.erase(iterators[i]);
+				}
+			}
+
+			erasing_iterators.count_down();
+			erasing_iterators.wait();
+			auto end = list.end();
+			for (auto& it : iterators) {
+				while (it != end) {
+					it++;
+				}
+			}
+
+		};
 
 
-	Iterator<int> iter3 = list.begin();
+		std::vector<std::thread> threads;
 
-	iter3++;
-	iter3++;
+		for (int i = 0; i < threadCount; i++) {
+			threads.push_back(std::thread(createIterators));
+		}
 
-	Iterator<int> iter4 = iter3;
+		for (auto& th : threads) {
+			th.join();
+		}
 
-	list.erase(iter3);
+		REQUIRE(list.getRealSize() == list.size());
 
-	REQUIRE(*iter3 == 5);
-	REQUIRE(*iter4 == 3);
-	REQUIRE(iter3.getPtr()->countRef == 6);
-	REQUIRE(iter4.getPtr()->countRef == 2);
-	REQUIRE(iter3.getPtr()->prev->countRef == 3);
-	REQUIRE(iter3.getPtr()->prev->val == 2);
+	}
 
-	list.erase(iter3);
+	SECTION("move iterators") {
 
-	list.erase(iter4);
+		std::cout << "move iterators..." << std::endl;
 
-	list.erase(iter2);
+		ConsistentList<int> list;
 
-	Iterator<int> iter5 = list.begin();
+		int listSize = 100;
 
-	Iterator<int> iter6 = list.begin();
+		int threadCount = 1000;
 
-	list.erase(iter5);
+		int iteratorsPerThread = 10;
 
-	list.erase(iter5);
+		for (int i = 0; i < listSize; i++) {
+			list.push_back(i);
+		}
 
-	list.erase(iter3);
+		std::vector<std::thread> threads;
 
-	list.erase(iter2);
+		auto moveForward = [&]() {
+			std::vector<Iterator<int>> iters;
+			for (int i = 0; i < iteratorsPerThread; i++) {
+				auto it = list.begin();
+				int pos = rand() % list.size();
+				list.advance(it, pos);
+				iters.push_back(it);
+			}
 
-	list.erase(iter4);
+			int count = iters.size();
 
-	list.erase(iter6);
+			for (auto& it : iters) {
+				while (it != list.end()) {
+					it++;
+				}
+			}
 
-	list.erase(iter1);
+		};
+
+		auto moveBack = [&]() {
+			std::vector<Iterator<int>> iters;
+			for (int i = 0; i < iteratorsPerThread; i++) {
+				auto it = list.begin();
+				int pos = rand() % list.size();
+				list.advance(it, pos);
+				iters.push_back(it);
+			}
+
+			int count = iters.size();
+
+			for (auto& it : iters) {
+				while (it != list.begin()) {
+					it--;
+				}
+			}
+
+		};
+
+		for (int i = 0; i < threadCount / 2; i++) {
+			threads.push_back(std::thread(moveForward));
+		}
+
+		for (int i = 0; i < threadCount / 2; i++) {
+			threads.push_back(std::thread(moveBack));
+		}
+
+		for (auto& th : threads) {
+			th.join();
+		}
+
+		Iterator<int> it = list.begin();
+		it++;
+
+		while (it != list.end()) {
+			REQUIRE(it.getPtr()->countRef == 3);
+			it++;
+		}
+	}
+
+	SECTION("insert and erase") {
+
+		std::cout << "insert and erase test..." << std::endl;
+
+		ConsistentList<int> list;
+
+		std::vector<std::thread> threads;
+
+		std::condition_variable_any cv;
+
+		std::shared_mutex mutex;
+
+		int threadCount = 1000;
+
+		int elementsCount = 100;
+
+		std::atomic<int> threadsFinished{ 0 };
+
+		auto insertFunc = [&](int id) {
+			Iterator<int> it = list.begin();
+			for (int i = 0; i < elementsCount; i++) {
+				list.insert(it, id);
+			}
+
+			threadsFinished++;
+
+			cv.notify_all();
+		};
+
+		auto eraseFunc = [&](int id) {
+			std::shared_lock<std::shared_mutex> lock(mutex);
+			cv.wait(lock, [&] { return threadsFinished == threadCount; });
+			Iterator<int> it = list.begin();
+			for (int i = 0; i < elementsCount; i++) {
+				list.erase(it);
+			}
+		};
+
+		for (int i = 0; i < threadCount; i++) {
+			threads.push_back(std::thread(insertFunc, i));
+		}
+
+		for (int i = 0; i < threadCount; i++) {
+			threads.push_back(std::thread(eraseFunc, i));
+		}
+
+		for (auto& th : threads) {
+			th.join();
+		}
+
+		REQUIRE(list.size() == list.getRealSize());
+	}
+
 }
