@@ -21,11 +21,10 @@ public:
 	}
 
 	~Iterator<T>() {
+	//	auto lock = std::unique_lock(pnode);
 		Node<T>* node = pnode;
-		if (node->countRef > 1) {
-			list->release(node);
-			list = nullptr;
-		}
+		list->release(node);
+		list = nullptr;
 	}
 
 	Node<T>* getPtr() {
@@ -33,7 +32,6 @@ public:
 	}
 
 	Iterator<T>& operator ++() {
-		auto lock = std::shared_lock(pnode->mutex);
 		Node<T>* prev = pnode;
 		list->acquire(&pnode, pnode->next);
 		list->release(prev);
@@ -69,6 +67,7 @@ public:
 	}
 
 	T& operator *() {
+		auto lock = std::shared_lock(pnode->mutex);
 		return pnode->val;
 	}
 
@@ -96,9 +95,11 @@ public:
 
 	Iterator<T>& operator=(Iterator<T>&& other) noexcept
 	{
+		auto lock = std::unique_lock(pnode->mutex);
 		if (this == &other)
 			return *this;
 
+		auto lock1 = std::unique_lock(other.pnode->mutex);
 		pnode = std::exchange(other.pnode, nullptr);
 		list = std::exchange(other.list, nullptr);
 		return *this;
