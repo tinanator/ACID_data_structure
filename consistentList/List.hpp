@@ -427,6 +427,7 @@ private:
 		}
 
 		/*std::queue<Node<T>*> nodesToDelete;
+
 		if (node) {
 			if (node->countRef <= 0) {
 				int a = 0;
