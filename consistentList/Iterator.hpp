@@ -69,6 +69,7 @@ public:
 	}
 
 	T& operator *() {
+		auto lock = std::shared_lock(pnode->mutex);
 		return pnode->val;
 	}
 

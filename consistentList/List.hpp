@@ -33,8 +33,7 @@ public:
 	friend Iterator<T>;
 
 	ConsistentList() {
-		_size = 0;
-	//	realSize = _size;
+		_size = 0;;
 		beginNode = new Node<T>();
 		endNode = new Node<T>();
 		beginNode->countRef = 1;
@@ -49,7 +48,7 @@ public:
 
 	ConsistentList(std::initializer_list<T> init) {
 		_size = 0;
-		realSize = _size;
+		realSize.store(_size);
 		beginNode = new Node<T>();
 		endNode = new Node<T>();
 		beginNode->countRef = 1;
@@ -97,53 +96,48 @@ public:
 	}
 
 	Iterator<T> insert(Iterator<T> pos, const T& val) {
+
 		Node<T>* node = pos.pnode;
+
+		auto lock = std::unique_lock(node->mutex);
+
+		if (node->deleted) {
+			while (node->prev->deleted) {
+				node = node->prev;
+			}
+			return Iterator<T>(&node, this);
+		}
+
+		if (node == beginNode) {
+			return pos;
+		}
 
 		for (bool retry = true; retry;) {
 			retry = false;
 
-			auto lock = std::unique_lock(node->mutex);
-
-			if (node->deleted) {
-				while (node->prev->deleted) {
-					node = node->prev;
-				}
-				return Iterator<T>(&node, this);
-			}
-
-			if (node == beginNode) {
-				return pos;
-			}
-
 			auto prev = node->prev;
 			assert(prev->countRef);
 
-			//lock.unlock();
-
-			//lock.lock();
-
 			auto lock2 = std::unique_lock(prev->mutex);
 			
+			if (prev->next == node) {
 
-			if (node->prev == prev) {
 				Node<T>* newNode = new Node<T>();
 				newNode->val = val;
 
 				newNode->next = node;
 				newNode->prev = prev;
 				node->prev = newNode;
-				newNode->prev->next = newNode;
+				prev->next = newNode;
 				newNode->countRef += 2;
 
 				_size++;
-				//realSize = _size;
-
 			}
 			else {
 				retry = true;
-
+				lock2.unlock();
 			}
-			lock2.unlock();
+		
 		}
 		return Iterator<T>(&(node->prev), this);
 	}
@@ -232,6 +226,7 @@ public:
 			auto lock1 = std::unique_lock(prev->mutex);
 			auto lock2 = std::shared_lock(node->mutex);
 			auto lock3 = std::unique_lock(next->mutex);
+
 			if (prev->next == node && next->prev == node) {
 
 				node->deleted = true;
