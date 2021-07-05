@@ -397,7 +397,7 @@ TEST_CASE("Multi thread") {
 
 		std::atomic<int> globalCount = threadsNum;
 
-	
+
 
 		int elemCount = 100;
 
@@ -428,7 +428,7 @@ TEST_CASE("Multi thread") {
 			}
 			gc->purge();
 		};
-			
+
 		std::thread gcth(purgeStart);
 
 		std::vector<std::thread> threads;
@@ -437,105 +437,14 @@ TEST_CASE("Multi thread") {
 		for (int i = 0; i < threadsNum; i++) {
 			threads.push_back(std::thread(push));
 		}
-		
+
 		for (auto& th : threads) {
 			th.join();
 		}
-		
+
 		gcth.join();
 
 		REQUIRE(gc->insertedCount == gc->erasedCount + 1);
-	}
-
-	SECTION("2") {
-		std::cout << "---------TEST 3----------" << std::endl;
-		
-		int elemToInsert = 1000;
-		int threadCount = 2;
-		int itersCount = elemToInsert / threadCount;
-
-		PurgedList<Node<int>>* gc = new PurgedList<Node<int>>();
-
-		ConsistentList<int> list(*gc);
-
-		int threadsNum = 100;
-
-		std::atomic<int> globalCount = threadsNum;
-
-		std::latch q{ 2 };
-		std::latch r{ 2 };
-
-		int val = 0;
-		for (int i = 0; i < threadCount * itersCount; i++) {
-			list.push_back(val);
-			val++;
-		}
-
-		auto push = [&list, &elemToInsert, &q, &r, &threadCount, &itersCount, &globalCount](int threadNum) {
-			srand(threadCount);
-			std::vector<Iterator<int>> iterators;
-			for (int i = 0; i < itersCount; i++) {
-				auto it = list.begin();
-				list.advance(it, threadNum + i * threadCount);
-				iterators.push_back(it);
-			//	std::cout << '-';
-			}
-
-			int val = threadNum * elemToInsert;
-			for (int l = 0; l < elemToInsert; l++) {
-				for (int j = 0; j < iterators.size(); j++) {
-					int i = 0;
-					auto it = list.insert(iterators[j], val);
-					iterators[j] = it;
-					val++;
-				}
-			}
-
-			r.count_down();
-			r.wait();
-
-			
-			for (int j = 0; j < iterators.size(); j++) {
-				for (int l = 0; l < elemToInsert; l++) {
-					auto it = list.erase(iterators[j]);
-					iterators[j] = it;
-				}
-			}
-
-
-			//q.count_down();
-			//q.wait();
-			//for (auto it : iterators) {
-			//	while (it != list.end()) {
-			//		it++;
-			//	}
-			//}
-			globalCount--;
-		};
-
-		auto purgeStart = [&gc, &globalCount]() {
-			while (globalCount > 0) {
-				gc->purge();
-				std::this_thread::sleep_for(std::chrono::seconds(1));
-			}
-			gc->purge();
-		};
-
-		std::vector<std::thread> threads;
-
-		for (int i = 0; i < threadCount; i++) {
-			threads.push_back(std::thread(push, i));
-		}
-
-		for (auto& th : threads) {
-			th.join();
-		}
-
-
-		std::cout << "check!" << std::endl;
-
-		REQUIRE(list.size() == threadCount * itersCount);
-		//REQUIRE(list.getRealSize() == 0);
 	}
 
 	//SECTION("1") {

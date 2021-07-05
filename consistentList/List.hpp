@@ -11,8 +11,8 @@
 template<typename T>
 struct PurgedItem
 {
-	PurgedItem(T* node): node(node) {
-		
+	PurgedItem(T* node) : node(node) {
+
 	}
 
 	T* node = nullptr;
@@ -114,6 +114,8 @@ public:
 
 private:
 
+
+
 	int size = 0;
 
 
@@ -148,7 +150,7 @@ struct Node
 
 	friend bool operator ==(const Node<T>& lhs, const Node<T>& rhs) {
 		return lhs.val == rhs.val && lhs.countRef == rhs.countRef
-			&& lhs.next == rhs.next && lhs.prev == rhs.prev 
+			&& lhs.next == rhs.next && lhs.prev == rhs.prev
 			&& lhs.deleted == rhs.deleted;
 	}
 
@@ -168,7 +170,7 @@ public:
 
 	friend Iterator<T>;
 
-	ConsistentList(PurgedList<Node<T>>& gc): gc(gc) {
+	ConsistentList(PurgedList<Node<T>>& gc) : gc(gc) {
 		_size = 0;
 		realSize = _size;
 		beginNode = new Node<T>();
@@ -183,7 +185,7 @@ public:
 		tail = endNode;
 	};
 
-	ConsistentList(PurgedList<Node<T>>& gc, std::initializer_list<T> init): gc(gc) {
+	ConsistentList(PurgedList<Node<T>>& gc, std::initializer_list<T> init) : gc(gc) {
 		_size = 0;
 		realSize = _size;
 		beginNode = new Node<T>();
@@ -232,7 +234,7 @@ public:
 	}
 
 	Iterator<T> insert(Iterator<T> pos, const T& val) {
-		
+
 		Node<T>* node = pos.pnode;
 
 		for (bool retry = true; retry;) {
@@ -275,7 +277,7 @@ public:
 			}
 			else {
 				retry = true;
-	
+
 			}
 			lock2.unlock();
 			lock1.unlock();
@@ -310,7 +312,7 @@ public:
 		Iterator<T> iter(&endNode, this);
 		return iter;
 	}
-	
+
 	int size() {
 		return _size;
 	}
@@ -319,7 +321,7 @@ public:
 		return _size == 0;
 	}
 
-	
+
 
 	void advance(Iterator<T>& it, int n) {
 		while (n > 0) {
@@ -349,7 +351,7 @@ public:
 			if (node == endNode || node == beginNode) {
 				return pos;
 			}
-			
+
 			auto prev = node->prev;
 			assert(prev->countRef);
 			prev->countRef++;
@@ -366,7 +368,7 @@ public:
 			if (prev->next == node && next->prev == node) {
 
 				node->deleted = true;
-				
+
 				node->next->prev = prev;
 				node->countRef--;
 				node->prev->next = next;
@@ -381,7 +383,7 @@ public:
 				lock2.unlock();
 				lock3.unlock();
 			}
-			
+
 		}
 		return Iterator<T>(&(node)->next, this);
 	}
@@ -425,7 +427,6 @@ private:
 		}
 
 		/*std::queue<Node<T>*> nodesToDelete;
-
 		if (node) {
 			if (node->countRef <= 0) {
 				int a = 0;
@@ -488,5 +489,5 @@ private:
 
 	Node<T>* endNode;
 
-//	std::vector<int> global_counter(std::thread::hardware_concurrency, 0);
+	//	std::vector<int> global_counter(std::thread::hardware_concurrency, 0);
 };
