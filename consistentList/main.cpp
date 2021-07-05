@@ -17,66 +17,6 @@
 
 TEST_CASE("Multi thread") {
 
-	SECTION("0") {
-
-		std::cout << "---------TEST 1----------" << std::endl;
-
-		PurgedList<Node<int>>* gc = new PurgedList<Node<int>>();
-
-		ConsistentList<int> list(*gc);
-
-		int threadsNum = 100;
-
-		std::atomic<int> globalCount = threadsNum;
-
-		int elemCount = 100;
-
-		auto push = [&list, &gc, &globalCount, &elemCount]() {
-			for (int i = 0; i < elemCount; i++) {
-				list.push_back(i);
-			}
-
-			std::vector<Iterator<int>> iters;
-
-			for (auto it = list.begin(); it != list.end(); it++) {
-				iters.push_back(list.erase(it));
-			}
-
-			for (auto& it : iters) {
-				while (it != list.end()) {
-					it++;
-				}
-			}
-
-			globalCount--;
-		};
-
-		auto purgeStart = [&gc, &globalCount]() {
-			while (globalCount > 0) {
-				gc->purge();
-				std::this_thread::sleep_for(std::chrono::seconds(1));
-			}
-			gc->purge();
-		};
-
-		std::thread gcth(purgeStart);
-
-		std::vector<std::thread> threads;
-
-
-		for (int i = 0; i < threadsNum; i++) {
-			threads.push_back(std::thread(push));
-		}
-
-		for (auto& th : threads) {
-			th.join();
-		}
-
-		gcth.join();
-
-		REQUIRE(gc->insertedCount == gc->erasedCount + 1);
-	}
-
 	SECTION("2") {
 
 		std::cout << "---------TEST 2----------" << std::endl;
@@ -89,7 +29,7 @@ TEST_CASE("Multi thread") {
 
 			PurgedList<Node<int>>* gc = new PurgedList<Node<int>>();
 
-			ConsistentList<int> list(*gc);
+			ConsistentList<int> list;
 
 			std::latch q{ threadCount };
 			std::latch r{ threadCount };
@@ -102,7 +42,7 @@ TEST_CASE("Multi thread") {
 				val++;
 			}
 
-			auto push = [&list, &elemToInsert, &q, &r, &threadCount, &itersCount, &globalCount](int threadNum) {
+			auto push = [&list, &elemToInsert, &q, &r, &threadCount, &itersCount](int threadNum) {
 
 				std::vector<Iterator<int>> iterators;
 				for (int i = 0; i < itersCount; i++) {
@@ -132,35 +72,20 @@ TEST_CASE("Multi thread") {
 					}
 				}
 
-				globalCount--;
 			};
 
-			auto purgeStart = [&gc, &globalCount]() {
-				while (globalCount > 0) {
-					gc->purge();
-					std::this_thread::sleep_for(std::chrono::seconds(1));
-				}
-				gc->purge();
-			};
 
 			std::vector<std::thread> threads;
 
 			auto tstart = clock();
 
-			std::thread gcth(purgeStart);
-
 			for (int i = 0; i < threadCount; i++) {
 				threads.push_back(std::thread(push, i));
 			}
 
-
-
 			for (auto& th : threads) {
 				th.join();
 			}
-
-			gcth.join();
-
 
 			auto tend = clock();
 

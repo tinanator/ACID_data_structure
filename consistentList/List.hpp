@@ -25,16 +25,17 @@ template<typename T>
 class PurgedList {
 public:
 	PurgedList() {
-
+		purgeThread = std::thread(&PurgedList<T>::runPurge, this);
 	}
 
 	~PurgedList() {
-		while (head != nullptr) {
-			auto next = head->next;
-			delete head;
-			head = next;
-			erasedCount++;
-		}
+		
+		stopPurge();
+
+		purgeThread.join();
+
+		delete head;
+
 	}
 
 	void pullToPurge(T* node) {
@@ -44,7 +45,29 @@ public:
 		insertedCount++;
 	}
 
+	void runPurge() {
+		while (toRunPurge) {
+			purge();
+		}
+	}
+
+	void stopPurge() {
+		toRunPurge = false;
+	}
+
+	int insertedCount = 0;
+
+	int erasedCount = 0;
+
+	std::shared_mutex mutex;
+
+	std::thread purgedThread;
+
+
+private:
+
 	void purge() {
+
 		auto lock = std::unique_lock(mutex);
 		auto purgeStart = head;
 		lock.unlock();
@@ -66,7 +89,6 @@ public:
 				delete toDelete;
 				erasedCount++;
 			}
-
 		}
 
 		lock.lock();
@@ -76,8 +98,6 @@ public:
 		lock.unlock();
 
 		item = newStart->next;
-
-
 
 		while (item != purgeStart->next) {
 			PurgedItem<T>* toDelete = nullptr;
@@ -105,24 +125,14 @@ public:
 			erasedCount++;
 		}
 	}
+	std::thread purgeThread;
 
-	int insertedCount = 0;
-
-	int erasedCount = 0;
-
-	std::shared_mutex mutex;
-
-private:
-
-
+	bool toRunPurge = true;
 
 	int size = 0;
 
-
 	PurgedItem<T>* head = nullptr;
 };
-
-
 
 
 template<typename T>
@@ -170,7 +180,7 @@ public:
 
 	friend Iterator<T>;
 
-	ConsistentList(PurgedList<Node<T>>& gc) : gc(gc) {
+	ConsistentList() {
 		_size = 0;
 		realSize = _size;
 		beginNode = new Node<T>();
@@ -183,6 +193,9 @@ public:
 		endNode->countRef = 1;
 		head = beginNode;
 		tail = endNode;
+
+		gc = new PurgedList<Node<T>>();
+		
 	};
 
 	ConsistentList(PurgedList<Node<T>>& gc, std::initializer_list<T> init) : gc(gc) {
@@ -217,6 +230,10 @@ public:
 		head = nullptr;
 		_size = 0;
 		realSize = 0;
+
+		gc->stopPurge();
+
+		delete gc;
 	}
 
 
@@ -404,11 +421,11 @@ public:
 private:
 
 	void release(Node<T>* node) {
-		auto lock = std::shared_lock(gc.mutex);
+		auto lock = std::shared_lock(gc->mutex);
 		std::queue<Node<T>*> nodesToDelete;
 		int newVal = --node->countRef;
 		if (newVal == 0) {
-			gc.pullToPurge(node);
+			gc->pullToPurge(node);
 			nodesToDelete.push(node->next);
 			nodesToDelete.push(node->prev);
 			while (!nodesToDelete.empty()) {
@@ -418,8 +435,7 @@ private:
 				if (n->countRef == 0) {
 					nodesToDelete.push(n->next);
 					nodesToDelete.push(n->prev);
-					gc.pullToPurge(n);
-					//realSize--;
+					gc->pullToPurge(n);
 				}
 			}
 		}
@@ -439,7 +455,12 @@ private:
 
 private:
 
-	PurgedList<Node<T>>& gc;
+
+	PurgedList<Node<T>>* gc;
+
+
+
+	bool toRunPurge = true;
 
 	std::shared_mutex m;
 
