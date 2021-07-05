@@ -34,7 +34,7 @@ public:
 
 	ConsistentList() {
 		_size = 0;
-		realSize = _size;
+	//	realSize = _size;
 		beginNode = new Node<T>();
 		endNode = new Node<T>();
 		beginNode->countRef = 1;
@@ -97,44 +97,55 @@ public:
 	}
 
 	Iterator<T> insert(Iterator<T> pos, const T& val) {
+		Node<T>* node = pos.pnode;
+
 		for (bool retry = true; retry;) {
 			retry = false;
 
-			auto lock = std::shared_lock(pos.pnode->mutex);
+			auto lock = std::unique_lock(node->mutex);
 
-			if (pos.pnode->countRef <= 0) {
+			if (node->deleted) {
+				while (node->prev->deleted) {
+					node = node->prev;
+				}
+				return Iterator<T>(&node, this);
+			}
+
+			if (node == beginNode) {
 				return pos;
 			}
 
-			auto prev = pos.pnode->prev;
+			auto prev = node->prev;
 			assert(prev->countRef);
 
-			lock.unlock();
+			//lock.unlock();
 
-			auto lock2 = std::unique_lock(pos.pnode->prev->mutex);
-			auto lock1 = std::unique_lock(pos.pnode->mutex);
+			//lock.lock();
 
-			if (pos.pnode->prev == prev) {
+			auto lock2 = std::unique_lock(prev->mutex);
+			
+
+			if (node->prev == prev) {
 				Node<T>* newNode = new Node<T>();
 				newNode->val = val;
 
-				newNode->next = pos.pnode;
-				newNode->prev = pos.pnode->prev;
-				pos.pnode->prev = newNode;
+				newNode->next = node;
+				newNode->prev = prev;
+				node->prev = newNode;
 				newNode->prev->next = newNode;
+				newNode->countRef += 2;
 
 				_size++;
-				realSize = _size;
+				//realSize = _size;
 
-				newNode->countRef += 2;
 			}
 			else {
 				retry = true;
-				lock2.unlock();
-				lock1.unlock();
+
 			}
+			lock2.unlock();
 		}
-		return pos;
+		return Iterator<T>(&(node->prev), this);
 	}
 
 	int getRealSize() {
@@ -191,7 +202,7 @@ public:
 	}
 
 
-	void erase(Iterator<T>& pos) {
+	Iterator<T> erase(Iterator<T>& pos) {
 
 		Node<T>* node = pos.pnode;
 
@@ -200,10 +211,14 @@ public:
 
 			auto lock = std::shared_lock(node->mutex);
 
-			if (node->countRef <= 0 || node == endNode || node == beginNode) {
-				return;
+			if (node->deleted) {
+				return pos;
 			}
-			
+
+			if (node == endNode || node == beginNode) {
+				return pos;
+			}
+
 			auto prev = node->prev;
 			assert(prev->countRef);
 			prev->countRef++;
@@ -217,25 +232,17 @@ public:
 			auto lock1 = std::unique_lock(prev->mutex);
 			auto lock2 = std::shared_lock(node->mutex);
 			auto lock3 = std::unique_lock(next->mutex);
-			if (prev == node->prev && next == node->next) {
+			if (prev->next == node && next->prev == node) {
 
-				if (!node->deleted) {
-					_size--;
-					node->deleted = true;
-				}
+				node->deleted = true;
 
-				if (next->prev == node) {
-					next->prev = prev;
-					node->countRef--;
-				}
-				if (prev->next == node) {
-					prev->next = next;
-					node->countRef--;
-				}
+				node->next->prev = prev;
+				node->countRef--;
+				node->prev->next = next;
+				node->countRef--;
 
-				Node<T>* prev1 = node;
-				acquire(&(node), next);
-				release(prev1);
+				_size--;
+
 			}
 			else {
 				retry = true;
@@ -247,6 +254,7 @@ public:
 			}
 
 		}
+		return Iterator<T>(&(node)->next, this);
 	}
 
 	int front() {
@@ -274,10 +282,7 @@ private:
 			if (node->countRef <= 0) {
 				nodesToDelete.push(node->next);
 				nodesToDelete.push(node->prev);
-				node->next = nullptr;
-				node->prev = nullptr;
 				delete node;
-				node = nullptr;
 				realSize--;
 				while (!nodesToDelete.empty()) {
 					Node<T>* n = nodesToDelete.front();
@@ -286,10 +291,7 @@ private:
 					if (n->countRef <= 0) {
 						nodesToDelete.push(n->next);
 						nodesToDelete.push(n->prev);
-						n->next = nullptr;
-						n->prev = nullptr;
 						delete n;
-						n = nullptr;
 						realSize--;
 					}
 				}
@@ -311,9 +313,9 @@ private:
 
 	std::condition_variable_any cv;
 
-	int _size;
+	std::atomic<int> _size;
 
-	int realSize;
+	std::atomic<int> realSize;
 
 	Node<T>* head;
 

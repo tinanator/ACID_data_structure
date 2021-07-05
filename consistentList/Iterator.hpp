@@ -22,7 +22,7 @@ public:
 
 	~Iterator<T>() {
 		Node<T>* node = pnode;
-		if (node->countRef > 1) {
+		if (node) {
 			list->release(node);
 			list = nullptr;
 		}
@@ -33,7 +33,7 @@ public:
 	}
 
 	Iterator<T>& operator ++() {
-		auto lock = std::shared_lock(pnode->mutex);
+		auto lock = std::unique_lock(pnode->mutex);
 		Node<T>* prev = pnode;
 		list->acquire(&pnode, pnode->next);
 		list->release(prev);
@@ -47,7 +47,7 @@ public:
 	}
 
 	Iterator<T>& operator --() {
-		auto lock = std::shared_lock(pnode->mutex);
+		auto lock = std::unique_lock(pnode->mutex);
 		Node<T>* prev = pnode;
 		list->acquire(&pnode, pnode->prev);
 		list->release(prev);
