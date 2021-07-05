@@ -237,50 +237,45 @@ public:
 
 		Node<T>* node = pos.pnode;
 
+		auto lock = std::unique_lock(node->mutex);
+
+		if (node->deleted) {
+			while (node->prev->deleted) {
+				node = node->prev;
+			}
+			return Iterator<T>(&node, this);
+		}
+
+		if (node == beginNode) {
+			return pos;
+		}
+
 		for (bool retry = true; retry;) {
 			retry = false;
-
-			auto lock = std::shared_lock(node->mutex);
-
-			if (node->deleted) {
-				while (node->prev->deleted) {
-					node = node->prev;
-				}
-				return Iterator<T>(&node, this);
-			}
-
-			if (node == beginNode) {
-				return pos;
-			}
 
 			auto prev = node->prev;
 			assert(prev->countRef);
 
-			lock.unlock();
+			auto lock2 = std::unique_lock(prev->mutex);
 
-			auto lock2 = std::unique_lock(node->prev->mutex);
-			auto lock1 = std::unique_lock(node->mutex);
+			if (prev->next == node) {
 
-			if (node->prev == prev) {
 				Node<T>* newNode = new Node<T>();
 				newNode->val = val;
 
 				newNode->next = node;
 				newNode->prev = prev;
 				node->prev = newNode;
-				newNode->prev->next = newNode;
+				prev->next = newNode;
 				newNode->countRef += 2;
 
 				_size++;
-				realSize = _size;
-
 			}
 			else {
 				retry = true;
-
+				lock2.unlock();
 			}
-			lock2.unlock();
-			lock1.unlock();
+
 		}
 		return Iterator<T>(&(node->prev), this);
 	}
@@ -365,6 +360,7 @@ public:
 			auto lock1 = std::unique_lock(prev->mutex);
 			auto lock2 = std::shared_lock(node->mutex);
 			auto lock3 = std::unique_lock(next->mutex);
+
 			if (prev->next == node && next->prev == node) {
 
 				node->deleted = true;
@@ -428,37 +424,6 @@ private:
 			}
 		}
 
-		/*std::queue<Node<T>*> nodesToDelete;
-
-		if (node) {
-			if (node->countRef <= 0) {
-				int a = 0;
-			}
-			node->countRef--;
-			if (node->countRef <= 0) {
-				nodesToDelete.push(node->next);
-				nodesToDelete.push(node->prev);
-				node->next = nullptr;
-				node->prev = nullptr;
-				delete node;
-				node = nullptr;
-				realSize--;
-				while (!nodesToDelete.empty()) {
-					Node<T>* n = nodesToDelete.front();
-					nodesToDelete.pop();
-					n->countRef--;
-					if (n->countRef == 0) {
-						nodesToDelete.push(n->next);
-						nodesToDelete.push(n->prev);
-						n->next = nullptr;
-						n->prev = nullptr;
-						delete n;
-						n = nullptr;
-						realSize--;
-					}
-				}
-			}
-		}*/
 	}
 
 	void acquire(Node<T>** curPtr, Node<T>* nextPtr) {
