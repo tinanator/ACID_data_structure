@@ -374,6 +374,8 @@ public:
 				node->prev->next = next;
 				node->countRef--;
 
+				_size--;
+
 			}
 			else {
 				retry = true;
