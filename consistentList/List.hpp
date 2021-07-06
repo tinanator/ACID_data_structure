@@ -24,45 +24,34 @@ struct PurgedItem
 template<typename T>
 class PurgedList {
 public:
-	PurgedList() {
-		purgeThread = std::thread(&PurgedList<T>::runPurge, this);
+	PurgedList(): purgeThread(std::thread(&PurgedList<T>::runPurge, this)) {
+
 	}
 
 	~PurgedList() {
-		
 		stopPurge();
-
 		purgeThread.join();
-
 		delete head;
-
 	}
 
 	void pullToPurge(T* node) {
 		PurgedItem<T>* pnode = new PurgedItem<T>(node);
 		pnode->next = head;
 		head = pnode;
-		insertedCount++;
 	}
 
 	void runPurge() {
 		while (toRunPurge) {
 			purge();
 		}
+		purge();
 	}
 
 	void stopPurge() {
 		toRunPurge = false;
 	}
 
-	int insertedCount = 0;
-
-	int erasedCount = 0;
-
 	std::shared_mutex mutex;
-
-	std::thread purgedThread;
-
 
 private:
 
@@ -87,7 +76,6 @@ private:
 			item = item->next;
 			if (toDelete) {
 				delete toDelete;
-				erasedCount++;
 			}
 		}
 
@@ -109,7 +97,6 @@ private:
 
 			if (toDelete) {
 				delete toDelete;
-				erasedCount++;
 			}
 		}
 
@@ -122,14 +109,12 @@ private:
 			delete item->node;
 			delete item;
 			item = next;
-			erasedCount++;
 		}
 	}
+
 	std::thread purgeThread;
 
 	bool toRunPurge = true;
-
-	int size = 0;
 
 	PurgedItem<T>* head = nullptr;
 };
@@ -156,20 +141,7 @@ struct Node
 		prev = nullptr;
 		countRef.store(0);
 	};
-
-
-	friend bool operator ==(const Node<T>& lhs, const Node<T>& rhs) {
-		return lhs.val == rhs.val && lhs.countRef == rhs.countRef
-			&& lhs.next == rhs.next && lhs.prev == rhs.prev
-			&& lhs.deleted == rhs.deleted;
-	}
-
-	friend bool operator !=(const Node<T>& lhs, const Node<T>& rhs) {
-		return !(lhs == rhs);
-	}
-
 };
-
 
 
 
@@ -198,7 +170,7 @@ public:
 		
 	};
 
-	ConsistentList(PurgedList<Node<T>>& gc, std::initializer_list<T> init) : gc(gc) {
+	ConsistentList(std::initializer_list<T> init) {
 		_size = 0;
 		realSize = _size;
 		beginNode = new Node<T>();
@@ -209,6 +181,8 @@ public:
 		endNode->prev = beginNode;
 		endNode->next = nullptr;
 		endNode->countRef = 1;
+
+		gc = new PurgedList<Node<T>>();
 
 		for (auto& el : init) {
 			push_back(el);
@@ -230,8 +204,6 @@ public:
 		head = nullptr;
 		_size = 0;
 		realSize = 0;
-
-		gc->stopPurge();
 
 		delete gc;
 	}
@@ -310,18 +282,22 @@ public:
 	}
 
 	Iterator<T> begin() {
+		Node<T>* node;
 		if (_size > 0) {
-			Iterator<T> iter(&beginNode->next, this);
-			return iter;
+			node = beginNode->next;
 		}
 		else {
-			Iterator<T> iter(&endNode, this);
-			return iter;
+			node = endNode;
 		}
+		std::unique_lock<std::shared_mutex>(node->mutex);
+		Iterator<T> iter(&node, this);
+		return iter;
 	}
 
 	Iterator<T> end() {
-		Iterator<T> iter(&endNode, this);
+		Node<T>* node = endNode;
+		std::unique_lock<std::shared_mutex>(node->mutex);
+		Iterator<T> iter(&node, this);
 		return iter;
 	}
 
@@ -383,17 +359,17 @@ public:
 				node->deleted = true;
 
 				node->next->prev = prev;
-				node->countRef--;
+				release(node);
 				node->prev->next = next;
-				node->countRef--;
+				release(node);
 
 				_size--;
 
 			}
 			else {
 				retry = true;
-				prev->countRef--;
-				next->countRef--;
+				release(prev);
+				release(next);
 				lock1.unlock();
 				lock2.unlock();
 				lock3.unlock();
@@ -421,6 +397,9 @@ public:
 private:
 
 	void release(Node<T>* node) {
+		if (!node) {
+			return;
+		}
 		auto lock = std::shared_lock(gc->mutex);
 		std::queue<Node<T>*> nodesToDelete;
 		int newVal = --node->countRef;
@@ -453,12 +432,20 @@ private:
 		(*curPtr)->countRef++;
 	}
 
+	void acquireBack(Node<T>** curPtr, Node<T>* prevPtr) {
+		if (*curPtr == beginNode) {
+			std::cout << "ERROR";
+		}
+		while (prevPtr->deleted) {
+			prevPtr = prevPtr->prev;
+		}
+		*curPtr = prevPtr;
+		(*curPtr)->countRef++;
+	}
+
 private:
 
-
 	PurgedList<Node<T>>* gc;
-
-
 
 	bool toRunPurge = true;
 
@@ -477,6 +464,8 @@ private:
 	Node<T>* beginNode;
 
 	Node<T>* endNode;
+
+	std::thread purgeThread;
 
 	//	std::vector<int> global_counter(std::thread::hardware_concurrency, 0);
 };
