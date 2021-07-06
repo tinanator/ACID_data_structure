@@ -49,7 +49,7 @@ public:
 	Iterator<T>& operator --() {
 		auto lock = std::unique_lock(pnode->mutex);
 		Node<T>* prev = pnode;
-		list->acquire(&pnode, pnode->prev);
+		list->acquireBack(&pnode, pnode->prev);
 		list->release(prev);
 		return *this;
 	}

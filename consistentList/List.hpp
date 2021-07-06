@@ -302,6 +302,14 @@ private:
 		(*curPtr)->countRef++;
 	}
 
+	void acquireBack(Node<T>** curPtr, Node<T>* prevPtr) {
+		while (prevPtr->deleted) {
+			prevPtr = prevPtr->next;
+		}
+		*curPtr = prevPtr;
+		(*curPtr)->countRef++;
+	}
+
 private:
 
 	std::shared_mutex m;
