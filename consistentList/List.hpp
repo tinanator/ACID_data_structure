@@ -25,7 +25,7 @@ template<typename T>
 class PurgedList {
 public:
 	PurgedList(): purgeThread(std::thread(&PurgedList<T>::runPurge, this)) {
-		delete head;
+		
 	}
 
 	~PurgedList() {
