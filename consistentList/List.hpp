@@ -102,10 +102,7 @@ public:
 		auto lock = std::unique_lock(node->mutex);
 
 		if (node->deleted) {
-			while (node->prev->deleted) {
-				node = node->prev;
-			}
-			return Iterator<T>(&node, this);
+			return pos;
 		}
 
 		if (node == beginNode) {
@@ -155,18 +152,22 @@ public:
 	}
 
 	Iterator<T> begin() {
+		Node<T>* node;
 		if (_size > 0) {
-			Iterator<T> iter(&beginNode->next, this);
-			return iter;
+			node = beginNode->next;
 		}
 		else {
-			Iterator<T> iter(&endNode, this);
-			return iter;
+			node = endNode;
 		}
+		std::unique_lock<std::shared_mutex>(node->mutex);
+		Iterator<T> iter(&node, this);
+		return iter;
 	}
 
 	Iterator<T> end() {
-		Iterator<T> iter(&endNode, this);
+		Node<T>* node = endNode;
+		std::unique_lock<std::shared_mutex>(node->mutex);
+		Iterator<T> iter(&node, this);
 		return iter;
 	}
 	
@@ -178,20 +179,14 @@ public:
 		return _size == 0;
 	}
 
-	
-
 	void advance(Iterator<T>& it, int n) {
 		while (n > 0) {
 			--n;
-			Node<T>* prev = it.pnode;
-			acquire(&it.pnode, it.pnode->next);
-			release(prev);
+			it++;
 		}
 		while (n < 0) {
 			++n;
-			Node<T>* prev = it.pnode;
-			acquire(&it.pnode, it.pnode->prev);
-			release(prev);
+			it--;
 		}
 	}
 
@@ -232,17 +227,17 @@ public:
 				node->deleted = true;
 
 				node->next->prev = prev;
-				node->countRef--;
+				release(node);
 				node->prev->next = next;
-				node->countRef--;
+				release(node);
 
 				_size--;
 
 			}
 			else {
 				retry = true;
-				prev->countRef--;
-				next->countRef--;
+				release(prev);
+				release(next);
 				lock1.unlock();
 				lock2.unlock();
 				lock3.unlock();
@@ -278,7 +273,6 @@ private:
 				nodesToDelete.push(node->next);
 				nodesToDelete.push(node->prev);
 				delete node;
-				realSize--;
 				while (!nodesToDelete.empty()) {
 					Node<T>* n = nodesToDelete.front();
 					nodesToDelete.pop();
@@ -287,7 +281,6 @@ private:
 						nodesToDelete.push(n->next);
 						nodesToDelete.push(n->prev);
 						delete n;
-						realSize--;
 					}
 				}
 			}
