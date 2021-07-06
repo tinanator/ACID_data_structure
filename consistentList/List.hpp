@@ -25,7 +25,7 @@ template<typename T>
 class PurgedList {
 public:
 	PurgedList(): purgeThread(std::thread(&PurgedList<T>::runPurge, this)) {
-
+		delete head;
 	}
 
 	~PurgedList() {
@@ -466,6 +466,4 @@ private:
 	Node<T>* endNode;
 
 	std::thread purgeThread;
-
-	//	std::vector<int> global_counter(std::thread::hardware_concurrency, 0);
 };
