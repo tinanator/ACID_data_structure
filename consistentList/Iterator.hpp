@@ -31,7 +31,7 @@ public:
 	}
 
 	Iterator<T>& operator ++() {
-		auto lock = std::unique_lock(pnode->mutex);
+		auto lock = std::shared_lock(pnode->mutex);
 		Node<T>* prev = pnode;
 		list->acquire(&pnode, pnode->next);
 		list->release(prev);
@@ -45,7 +45,7 @@ public:
 	}
 
 	Iterator<T>& operator --() {
-		auto lock = std::unique_lock(pnode->mutex);
+		auto lock = std::shared_lock(pnode->mutex);
 		Node<T>* prev = pnode;
 		list->acquireBack(&pnode, pnode->prev);
 		list->release(prev);
@@ -83,11 +83,11 @@ public:
 
 	Iterator<T>& operator=(Iterator<T>& other) {
 
-		auto lock = std::unique_lock(pnode->mutex);
+	//	auto lock = std::unique_lock(pnode->mutex);
 		if (this == &other) {
 			return *this;
 		}
-		auto lock1 = std::shared_lock(other.pnode->mutex);
+	//	auto lock1 = std::shared_lock(other.pnode->mutex);
 		pnode = other.pnode;
 		list = other.list;
 		pnode->countRef++;
@@ -96,11 +96,11 @@ public:
 
 	Iterator<T>& operator=(Iterator<T>&& other) noexcept
 	{
-		auto lock = std::unique_lock(pnode->mutex);
+	//	auto lock = std::unique_lock(pnode->mutex);
 		if (this == &other)
 			return *this;
 
-		auto lock1 = std::unique_lock(other.pnode->mutex);
+	//	auto lock1 = std::unique_lock(other.pnode->mutex);
 		pnode = std::exchange(other.pnode, nullptr);
 		list = std::exchange(other.list, nullptr);
 		return *this;

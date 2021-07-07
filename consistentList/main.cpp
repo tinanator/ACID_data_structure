@@ -303,6 +303,82 @@ TEST_CASE() {
 }
 
 TEST_CASE("Multi thread") {
+
+	SECTION("0") {
+		std::cout << "---------TEST 0----------" << std::endl;
+
+		int count = 100;
+
+		for (int tc = 2; tc <= 10; tc++) {
+			ConsistentList<int> list;
+
+			for (int i = 0; i < count; i++) {
+				list.push_back(0);
+			}
+
+			auto push = [&](int threadNum) {
+				int itersCount = 10;
+				std::vector<Iterator<int>> invalidIterators;
+				std::vector<Iterator<int>> iterators;
+				for (int i = 0; i < itersCount; i++) {
+					iterators.push_back(list.begin());
+				}
+				int val = 0;
+				int insertedCount = 10;
+				bool toStop = false;
+				while (insertedCount > 0) {
+					for (int i = 0; i < iterators.size(); i++) {
+						if (toStop) {
+							break;
+						}
+						int r = rand() % 3;
+						switch (r) {
+						case 0:
+							if (iterators[i] != list.end()) {
+								iterators[i]++;
+							}
+							break;
+						case 1:
+							iterators[i] = list.insert(iterators[i], val + threadNum);
+							insertedCount--;
+							if (insertedCount <= 0) {
+								toStop = true;
+							}
+							std::cout << std::to_string(insertedCount) + ' ' << std::endl;
+							val++;
+							break;
+						case 2:
+							invalidIterators.push_back(iterators[i]);
+							iterators[i] = list.erase(iterators[i]);
+							break;
+						}
+					}
+				}
+			};
+
+			std::vector<std::thread> threads;
+
+			int threadCount = tc;
+
+			auto tstart = clock();
+
+			for (int i = 0; i < threadCount; i++) {
+				threads.push_back(std::thread(push, i));
+			}
+
+			for (auto& th : threads) {
+				th.join();
+			}
+
+
+			auto tend = clock();
+
+			auto time = tend - tstart;
+
+			std::cout << std::to_string(tc) + ": " + std::to_string(time) << std::endl;
+		}
+	}
+
 	
 	SECTION("1") {
 		std::cout << "---------TEST----------" << std::endl;

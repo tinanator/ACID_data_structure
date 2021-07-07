@@ -229,10 +229,7 @@ public:
 		auto lock = std::unique_lock(node->mutex);
 
 		if (node->deleted) {
-			while (node->prev->deleted) {
-				node = node->prev;
-			}
-			return Iterator<T>(&node, this);
+			return pos;
 		}
 
 		if (node == beginNode) {
@@ -245,7 +242,10 @@ public:
 			auto prev = node->prev;
 			assert(prev->countRef);
 
+			lock.unlock();
+
 			auto lock2 = std::unique_lock(prev->mutex);
+			lock.lock();
 
 			if (prev->next == node) {
 
@@ -263,6 +263,7 @@ public:
 			else {
 				retry = true;
 				lock2.unlock();
+				lock.unlock();
 			}
 
 		}
