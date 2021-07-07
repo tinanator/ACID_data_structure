@@ -65,21 +65,18 @@ TEST_CASE("erase") {
 	REQUIRE(list.size() == 3);
 	REQUIRE(*it == 2);
 	REQUIRE(it.getPtr()->countRef == 4);
-	REQUIRE(it.getPtr()->prev == list.getBeginNode());
 
 	it = list.erase(it);
 
 	REQUIRE(list.size() == 2);
 	REQUIRE(*it == 3);
 	REQUIRE(it.getPtr()->countRef == 4);
-	REQUIRE(it.getPtr()->prev == list.getBeginNode());
 
 	it = list.erase(it);
 
 	REQUIRE(list.size() == 1);
 	REQUIRE(*it == 4);
 	REQUIRE(it.getPtr()->countRef == 4);
-	REQUIRE(it.getPtr()->prev == list.getBeginNode());
 
 	it = list.erase(it);
 
@@ -208,12 +205,10 @@ TEST_CASE() {
 	it1 = list.erase(--it1);
 	REQUIRE(*it1 == 5);
 	REQUIRE(it1.getPtr()->countRef == 6);
-	REQUIRE(it1.getPtr()->prev == list.getBeginNode());
 
 	it1 = list.erase(it1);
 	REQUIRE(*it1 == 6);
 	REQUIRE(it1.getPtr()->countRef == 4);
-	REQUIRE(it1.getPtr()->prev == list.getBeginNode());
 
 	it1 = list.erase(it1);
 	REQUIRE(it1 == list.end());
@@ -317,14 +312,14 @@ TEST_CASE("Multi thread") {
 			}
 
 			auto push = [&](int threadNum) {
-				int itersCount = 10;
+				int itersCount = 1000;
 				std::vector<Iterator<int>> invalidIterators;
 				std::vector<Iterator<int>> iterators;
 				for (int i = 0; i < itersCount; i++) {
 					iterators.push_back(list.begin());
 				}
 				int val = 0;
-				int insertedCount = 10;
+				int insertedCount = 1000;
 				bool toStop = false;
 				while (insertedCount > 0) {
 					for (int i = 0; i < iterators.size(); i++) {
@@ -474,33 +469,43 @@ TEST_CASE("Multi thread") {
 
 			ConsistentList<std::pair<int, int>> list;
 
-			auto push = [&list, elemCount](int threadNum) {
+			std::latch l{threadCount};
+
+			auto push = [&list, elemCount, &l](int threadNum) {
 				int itersCount = elemCount;
+				
 				std::vector<Iterator<std::pair<int, int>>> iterators;
 				for (int i = 0; i < itersCount; i++) {
 					iterators.push_back(list.begin());
 				}
+
+				l.count_down();
+				l.wait();
+
 				int val = elemCount * threadNum;
 				while (val < elemCount * (threadNum + 1)) {
 					for (auto it : iterators) {
 						int i = 0;
 						int r = rand() % 2;
 						switch (r) {
-						case 0:
-						{
-							if (it != list.end()) {
-								it++;
+							case 0:
+							{
+								if (it != list.end()) {
+									it++;
+								}
+								break;
 							}
-							break;
-						}
 
-						case 1:
-						{
-							list.insert(it, std::pair<int, int>(val, threadNum));
-							val++;
-							break;
-						}
+							case 1:
+							{
+								list.insert(it, std::pair<int, int>(val, threadNum));
+								val++;
+								break;
+							}
 
+						}
+						if (val >= elemCount * (threadNum + 1)) {
+							break;
 						}
 					}
 				}
@@ -518,7 +523,7 @@ TEST_CASE("Multi thread") {
 			for (auto& th : threads) {
 				th.join();
 			}
-
+	
 			auto tend = clock();
 
 			auto time = tend - tstart;

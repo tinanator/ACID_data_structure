@@ -214,38 +214,31 @@ public:
 	}
 
 	void push_front(T val) {
-		if (_size == 0) {
-			insert(begin(), val);
-		}
-		else {
-			insert(begin()->next, val);
-		}
+		insert(begin(), val);
 	}
+
 
 	Iterator<T> insert(Iterator<T> pos, const T& val) {
 
 		Node<T>* node = pos.pnode;
 
-		auto lock = std::unique_lock(node->mutex);
-
 		if (node->deleted) {
-			return pos;
-		}
-
-		if (node == beginNode) {
 			return pos;
 		}
 
 		for (bool retry = true; retry;) {
 			retry = false;
 
+
+			auto lock = std::shared_lock(node->mutex);
+
 			auto prev = node->prev;
 			assert(prev->countRef);
 
 			lock.unlock();
 
-			auto lock2 = std::unique_lock(prev->mutex);
-			lock.lock();
+			auto lock1 = std::unique_lock(prev->mutex);
+			auto lock2 = std::unique_lock(node->mutex);
 
 			if (prev->next == node) {
 
@@ -259,27 +252,68 @@ public:
 				newNode->countRef += 2;
 
 				_size++;
+
 			}
 			else {
 				retry = true;
-				lock2.unlock();
-				lock.unlock();
 			}
+			lock1.unlock();
+			lock2.unlock();
 
 		}
+
+		return Iterator<T>(&(node->prev), this);
+	}
+
+	Iterator<T> insert_worked(Iterator<T> pos, const T& val) {
+
+		Node<T>* node = pos.pnode;
+
+		if (node->deleted) {
+			return pos;
+		}
+
+		for (bool retry = true; retry;) {
+			retry = false;
+
+
+			node->mutex.lock();
+
+			auto prev = node->prev;
+			assert(prev->countRef);
+
+			node->mutex.unlock();
+
+			prev->mutex.lock();
+			node->mutex.lock();
+
+			if (prev->next == node) {
+
+				Node<T>* newNode = new Node<T>();
+				newNode->val = val;
+
+				newNode->next = node;
+				newNode->prev = prev;
+				node->prev = newNode;
+				prev->next = newNode;
+				newNode->countRef += 2;
+
+				_size++;
+
+			}
+			else {
+				retry = true;
+			}
+			prev->mutex.unlock();
+			node->mutex.unlock();
+
+		}
+	
 		return Iterator<T>(&(node->prev), this);
 	}
 
 	int getRealSize() {
 		return realSize;
-	}
-
-	Node<T>* getBeginNode() {
-		return beginNode;
-	}
-
-	Node<T>* getEndNode() {
-		return endNode;
 	}
 
 	Iterator<T> begin() {
@@ -290,14 +324,12 @@ public:
 		else {
 			node = endNode;
 		}
-		std::unique_lock<std::shared_mutex>(node->mutex);
 		Iterator<T> iter(&node, this);
 		return iter;
 	}
 
 	Iterator<T> end() {
 		Node<T>* node = endNode;
-		std::unique_lock<std::shared_mutex>(node->mutex);
 		Iterator<T> iter(&node, this);
 		return iter;
 	}
