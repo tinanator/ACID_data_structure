@@ -87,36 +87,32 @@ public:
 	}
 
 	void push_front(T val) {
-		if (_size == 0) {
-			insert(begin(), val);
-		}
-		else {
-			insert(begin()->next, val);
-		}
+		insert(begin(), val);
 	}
+
 
 	Iterator<T> insert(Iterator<T> pos, const T& val) {
 
 		Node<T>* node = pos.pnode;
 
-		auto lock = std::unique_lock(node->mutex);
-
 		if (node->deleted) {
-			return pos;
-		}
-
-		if (node == beginNode) {
 			return pos;
 		}
 
 		for (bool retry = true; retry;) {
 			retry = false;
 
+
+			auto lock = std::shared_lock(node->mutex);
+
 			auto prev = node->prev;
 			assert(prev->countRef);
 
-			auto lock2 = std::unique_lock(prev->mutex);
-			
+			lock.unlock();
+
+			auto lock1 = std::unique_lock(prev->mutex);
+			auto lock2 = std::unique_lock(node->mutex);
+
 			if (prev->next == node) {
 
 				Node<T>* newNode = new Node<T>();
@@ -129,13 +125,16 @@ public:
 				newNode->countRef += 2;
 
 				_size++;
+
 			}
 			else {
 				retry = true;
-				lock2.unlock();
 			}
-		
+			lock1.unlock();
+			lock2.unlock();
+
 		}
+
 		return Iterator<T>(&(node->prev), this);
 	}
 
