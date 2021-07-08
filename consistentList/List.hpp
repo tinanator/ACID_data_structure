@@ -222,9 +222,8 @@ public:
 
 		Node<T>* node = pos.pnode;
 
-		if (node->deleted) {
-			return pos;
-		}
+
+		
 
 		for (bool retry = true; retry;) {
 			retry = false;
@@ -239,6 +238,11 @@ public:
 
 			auto lock1 = std::unique_lock(prev->mutex);
 			auto lock2 = std::unique_lock(node->mutex);
+
+
+			while (node->deleted) {
+				node = node->next;
+			}
 
 			if (prev->next == node) {
 
@@ -390,7 +394,6 @@ public:
 			if (prev->next == node && next->prev == node) {
 
 				node->deleted = true;
-
 				node->next->prev = prev;
 				release(node);
 				node->prev->next = next;

@@ -304,7 +304,7 @@ TEST_CASE("Multi thread") {
 
 		int count = 100;
 
-		for (int tc = 2; tc <= 10; tc++) {
+		for (int tc = 2; tc <= 5; tc++) {
 			ConsistentList<int> list;
 
 			for (int i = 0; i < count; i++) {
@@ -316,7 +316,9 @@ TEST_CASE("Multi thread") {
 				std::vector<Iterator<int>> invalidIterators;
 				std::vector<Iterator<int>> iterators;
 				for (int i = 0; i < itersCount; i++) {
-					iterators.push_back(list.begin());
+					auto it = list.begin();
+					list.advance(it, rand() % count);
+					iterators.push_back(it);
 				}
 				int val = 0;
 				int insertedCount = 1000;
@@ -339,7 +341,7 @@ TEST_CASE("Multi thread") {
 							if (insertedCount <= 0) {
 								toStop = true;
 							}
-							std::cout << std::to_string(insertedCount) + ' ' << std::endl;
+							//std::cout << std::to_string(insertedCount) + ' ' << std::endl;
 							val++;
 							break;
 						case 2:
@@ -378,9 +380,9 @@ TEST_CASE("Multi thread") {
 	SECTION("1") {
 		std::cout << "---------TEST----------" << std::endl;
 
-		for (int tc = 2; tc <= 10; tc++) {
+		for (int tc = 2; tc <= 5; tc++) {
 
-			int elemToInsert = 1000;
+			int elemToInsert = 10;
 			int threadCount = tc;
 			int itersCount = elemToInsert / threadCount;
 			ConsistentList<int> list;
@@ -462,7 +464,7 @@ TEST_CASE("Multi thread") {
 
 		int count = 200000;
 
-		for (int tc = 2; tc <= 10; tc++) {
+		for (int tc = 2; tc <= 5; tc++) {
 			int threadCount = tc;
 
 			int elemCount = count / tc;
