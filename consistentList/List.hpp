@@ -4,319 +4,348 @@
 #include <mutex>
 #include <condition_variable>
 #include <queue>
+#include "Iterator.hpp"
+enum class TrxType {
+	read, write
+};
 
-template<typename T>
-class Iterator;
+struct Trx {
+	
+	Trx(int ver, TrxType type) : ver(ver), type(type) {
+		
+	}
+
+	friend bool operator ==(const Trx& lhs, const Trx& rhs) = default;
+
+	friend bool operator !=(const Trx& lhs, const Trx& rhs) = default;
+	
+	int ver = 0;
+	TrxType type;
+};
+
+
+class TrxManager {
+public:
+
+	TrxManager() {}
+
+	~TrxManager() {}
+
+	Trx beginWrite() {
+		writer.lock();
+		trxVec.emplace_back(getVersion(), TrxType::write);
+		return trxVec.back();
+	}
+
+	Trx beginRead() {
+		trxVec.emplace_back(getVersion(), TrxType::read);
+		return trxVec.back();
+	}
+
+	void commit(Trx trx) {
+		if (trx.type == TrxType::write) {
+			writer.unlock();
+		}
+		auto it = std::find(trxVec.begin(), trxVec.end(), trx);
+		if (it != trxVec.end()) {
+			std::swap(*it, trxVec.back());
+			trxVec.pop_back();
+		}
+	}
+
+	int getVersion() {
+		return ++nextVer;
+	}
+
+	std::vector<Trx>& getActiveTxr() {
+		return trxVec;
+	}
+
+private:
+	std::shared_mutex writer;
+	int nextVer = 0;
+	std::vector<Trx> trxVec;
+};
+
 
 template<typename T>
 struct Node
 {
-	std::shared_mutex mutex;
+	Node(T val, int startVer) : val(val), startVersion(startVer), endVersion(INT_MAX) {
+	}
+
+	Node(Node<T>& other) = delete;
+
+	~Node() {}
+
 	T val;
-	std::atomic<int> countRef = 0;
-	std::atomic<bool> deleted = false;
-	Node* next;
-	Node* prev;
-	~Node() {
-		next = nullptr;
-		prev = nullptr;
-		countRef.store(0);
-	};
+	Node<T>* next = nullptr;
+	Node<T>* prev = nullptr;;
+	int startVersion;
+	int endVersion;
+	bool deleted = false;
+	std::shared_mutex mutex;
 };
+
+template<typename T>
+class Iterator {
+public:
+	Iterator(Node<T>* node, Trx trx) : node(node), trx(trx) {}
+
+	Iterator(const Iterator<T>& other) = default;
+
+	~Iterator() {}
+
+	Iterator& operator ++() {
+		auto lock = std::shared_lock(node->mutex);
+		if (!node) {
+			return *this;
+		}
+		node = node->next;
+		while (!isReadable()) {
+			node = node->next;
+		}
+		return *this;
+	}
+
+	Iterator operator ++(int) {
+		Iterator<T> iterator = *this;
+		++(*this);
+		return *this;
+	}
+
+	Iterator& operator --() {
+		auto lock = std::shared_lock(node->mutex);
+		if (!node) {
+			return *this;
+		}
+		node = node->prev;
+		while (!isReadable()) {
+			node = node->prev;
+		}
+		return *this;
+	}
+
+	Node<T>* getNode() {
+		return node;
+	}
+
+	Iterator operator --(int) {
+		Iterator iterator = *this;
+		--(*this);
+		return *this;
+	}
+
+	friend bool operator ==(const Iterator& lhs, const Iterator& rhs) {
+		return lhs.node == rhs.node && lhs.trx == rhs.trx;
+	}
+
+	friend bool operator !=(const Iterator& lhs, const Iterator& rhs) {
+		return !(lhs.node == rhs.node || lhs.trx == rhs.trx);
+	}
+
+	T& operator *() {
+		auto lock = std::shared_lock(node->mutex);
+		return node->val;
+	}
+
+	void set(T val) {
+		auto lock = std::unique_lock(node->mutex);
+		node->val = val;
+	}
+
+	T get() {
+		auto lock = std::shared_lock(node->mutex);
+		return node->val;
+	}
+
+	Iterator<T>& operator=(Iterator<T>& other)
+	{
+		if (this == &other) {
+			return *this;
+		}
+		node = other.node;
+		return *this;
+	}
+
+	Iterator<T>& operator=(Iterator<T>&& other) noexcept
+	{
+		if (this == &other)
+			return *this;
+
+		node = std::exchange(other.node, nullptr);
+		return *this;
+	}
+
+	bool isReadable() {
+		return isReadable(node, trx);
+	}
+
+	static bool isReadable(Node<T>* node, Trx trx) {
+		auto lock = std::shared_lock(node->mutex);
+
+		if (node == nullptr) {
+			return true;
+		}
+		if (trx.type == TrxType::write) {
+			return node->endVersion == INT_MAX;
+		}
+		else {
+			return node->startVersion <= trx.ver
+				&& node->endVersion >= trx.ver;
+		}
+
+	}
+
+	Trx getTrx() {
+		return trx;
+	}
+	Trx trx;
+
+	Node<T>* node;
+	
+};
+
 
 
 template<typename T>
-class ConsistentList
-{
-public:
+class List {
+	public:
+		explicit List(TrxManager& trxManager): head(nullptr), tail(nullptr), trxManager(trxManager) {
 
-	friend Iterator<T>;
-
-	ConsistentList() {
-		_size = 0;;
-		beginNode = new Node<T>();
-		endNode = new Node<T>();
-		beginNode->countRef = 1;
-		beginNode->next = endNode;
-		beginNode->prev = nullptr;
-		endNode->prev = beginNode;
-		endNode->next = nullptr;
-		endNode->countRef = 1;
-		head = beginNode;
-		tail = endNode;
-	};
-
-	ConsistentList(std::initializer_list<T> init) {
-		_size = 0;
-		realSize.store(_size);
-		beginNode = new Node<T>();
-		endNode = new Node<T>();
-		beginNode->countRef = 1;
-		beginNode->next = endNode;
-		beginNode->prev = nullptr;
-		endNode->prev = beginNode;
-		endNode->next = nullptr;
-		endNode->countRef = 1;
-
-		for (auto& el : init) {
-			push_back(el);
 		}
-	}
-
-
-	~ConsistentList() {
-		Node<T>* node = beginNode->next;
-		while (node != endNode) {
-			Node<T>* prev = node;
-			beginNode->next = node->next;
-			node->next->prev = beginNode;
-			node = node->next;
-			delete prev;
-		}
-		delete beginNode;
-		delete endNode;
-		tail = nullptr;
-		head = nullptr;
-		_size = 0;
-		realSize = 0;
-	}
-
-
-	void push_back(T val) {
-		insert(end(), val);
-	}
-
-	void push_front(T val) {
-		insert(begin(), val);
-	}
-
-
-	Iterator<T> insert(Iterator<T> pos, const T& val) {
-
-		Node<T>* node = pos.pnode;
-
-		if (node->deleted) {
-			return pos;
+		~List() {
+			auto node = head->next;
+			while (node) {
+				auto prev = node;
+				node = node->next;
+				delete prev;
+			}
 		}
 
-		for (bool retry = true; retry;) {
-			retry = false;
+		Iterator<T> back(Trx trx) {
+			auto node = head;
+			Node<T>* result = nullptr;
+			while (node != nullptr) {
+				if (!Iterator<T>::isReadable(node, trx)) {
+						result = node;
+				}
+				node = node->next;
+			}
+			return Iterator<T>(result, trx);
+		}
 
-
-			auto lock = std::shared_lock(node->mutex);
-
-			auto prev = node->prev;
-			assert(prev->countRef);
-
-			lock.unlock();
-
-			auto lock1 = std::unique_lock(prev->mutex);
-			auto lock2 = std::unique_lock(node->mutex);
-
-			if (prev->next == node) {
-
-				Node<T>* newNode = new Node<T>();
-				newNode->val = val;
-
-				newNode->next = node;
-				newNode->prev = prev;
-				node->prev = newNode;
-				prev->next = newNode;
-				newNode->countRef += 2;
-
-				_size++;
-
+		Iterator<T> insert(Iterator<T> pos, T val) {
+			auto newNode = new Node<T>(val, trxManager.getVersion());
+			auto node = pos.getNode();
+			if (pos == end(pos.trx)) {
+				auto backIt = back(pos.trx);
+				if (backIt == end(pos.trx)) {
+					node = head;
+				}
+				else {
+					node = backIt.getNode();
+				}
+				newNode->prev = node;
+				if (node) {
+					newNode->next = node->next;
+					node->next = newNode;
+				}
+				else {
+					head = newNode;
+				}
+				return Iterator<T>(newNode, pos.trx);
+			}
+			newNode->next = node;
+			newNode->prev = node->prev;
+			node->prev = newNode;
+			if (newNode->prev) {
+				newNode->prev->next = newNode;
 			}
 			else {
-				retry = true;
+				head = newNode;
 			}
-			lock1.unlock();
-			lock2.unlock();
-
+			return Iterator<T>(newNode, pos.trx);
 		}
 
-		return Iterator<T>(&(node->prev), this);
-	}
-
-	int getRealSize() {
-		return realSize;
-	}
-
-	Node<T>* getBeginNode() {
-		return beginNode;
-	}
-
-	Node<T>* getEndNode() {
-		return endNode;
-	}
-
-	Iterator<T> begin() {
-		Node<T>* node;
-		if (_size > 0) {
-			node = beginNode->next;
+		Iterator<T> erase(Iterator<T> pos) {
+			Iterator<T> newIt = pos;
+			newIt++;
+			pos.getNode()->endVersion = trxManager.getVersion();
+			return newIt;
 		}
-		else {
-			node = endNode;
-		}
-		std::unique_lock<std::shared_mutex>(node->mutex);
-		Iterator<T> iter(&node, this);
-		return iter;
-	}
 
-	Iterator<T> end() {
-		Node<T>* node = endNode;
-		std::unique_lock<std::shared_mutex>(node->mutex);
-		Iterator<T> iter(&node, this);
-		return iter;
-	}
-	
-	int size() {
-		return _size;
-	}
-
-	bool empty() {
-		return _size == 0;
-	}
-
-	void advance(Iterator<T>& it, int n) {
-		while (n > 0) {
-			--n;
-			it++;
-		}
-		while (n < 0) {
-			++n;
-			it--;
-		}
-	}
-
-
-	Iterator<T> erase(Iterator<T>& pos) {
-
-		Node<T>* node = pos.pnode;
-
-		for (bool retry = true; retry;) {
-			retry = false;
-
-			auto lock = std::shared_lock(node->mutex);
-
-			if (node->deleted) {
-				return pos;
+		Iterator<T> begin(Trx trx) {
+			auto node = head;
+			while (node && !Iterator<T>::isReadable(node, trx)) {
+				node = node->next;
 			}
-
-			if (node == endNode || node == beginNode) {
-				return pos;
-			}
-
-			auto prev = node->prev;
-			assert(prev->countRef);
-			prev->countRef++;
-
-			auto next = node->next;
-			assert(next->countRef);
-			next->countRef++;
-
-			lock.unlock();
-
-			auto lock1 = std::unique_lock(prev->mutex);
-			auto lock2 = std::shared_lock(node->mutex);
-			auto lock3 = std::unique_lock(next->mutex);
-
-			if (prev->next == node && next->prev == node) {
-
-				node->deleted = true;
-
-				node->next->prev = prev;
-				release(node);
-				node->prev->next = next;
-				release(node);
-
-				_size--;
-
-			}
-			else {
-				retry = true;
-				release(prev);
-				release(next);
-				lock1.unlock();
-				lock2.unlock();
-				lock3.unlock();
-			}
-
+			return Iterator<T>(node, trx);
 		}
-		return Iterator<T>(&(node)->next, this);
-	}
 
-	int front() {
-		if (beginNode->next == endNode) {
-			throw std::runtime_error("empty list");
+		Iterator<T> end(Trx trx) {
+			return Iterator<T>(nullptr, trx);
 		}
-		return beginNode->next->val;
-	}
 
-	int back() {
-		if (endNode->prev == beginNode) {
-			throw std::runtime_error("empty list");
+		int size(Trx trx) {
+			int size = 0;
+			for (auto it = begin(trx); it != end(trx); ++it) {
+				size++;
+			}
+			return size;
 		}
-		return endNode->prev->val;
-	}
 
 
-private:
+		void gc(std::vector<Trx>& trxVec) {
+			auto lock = std::unique_lock(mutex);
+			auto node = head;
+			while (node) {
+				if (node->endVersion == INT_MAX) {
+					node = node->next;
+				}
+				else {
+					bool found = false;
+					for (const auto& trx : trxVec)
+					{
+						if (Iterator<T>::isReadable(node, trx)) {
+							found = true;
+							break;
+						}
+					}
+					if (found) {
+						node = node->next;
+					}
+					else {
+						if (node->next) {
+							node->next->prev = node->prev;
+						}
+						if (node->prev) {
+							node->prev->next = node->next;
+						}
+						else {
+							head = node->next;
+						}
 
-	void release(Node<T>* node) {
-		std::queue<Node<T>*> nodesToDelete;
-
-		if (node) {
-			node->countRef--;
-			if (node->countRef <= 0) {
-				nodesToDelete.push(node->next);
-				nodesToDelete.push(node->prev);
-				delete node;
-				while (!nodesToDelete.empty()) {
-					Node<T>* n = nodesToDelete.front();
-					nodesToDelete.pop();
-					n->countRef--;
-					if (n->countRef <= 0) {
-						nodesToDelete.push(n->next);
-						nodesToDelete.push(n->prev);
-						delete n;
+						auto prev = node;
+						node = node->next;
+						delete prev;
 					}
 				}
+
 			}
 		}
-	}
 
-	void acquire(Node<T>** curPtr, Node<T>* nextPtr) {
-		while (nextPtr->deleted) {
-			nextPtr = nextPtr->next;
+		Node<T>* getHead() {
+			return head;
 		}
-		*curPtr = nextPtr;
-		(*curPtr)->countRef++;
-	}
 
-	void acquireBack(Node<T>** curPtr, Node<T>* prevPtr) {
-		while (prevPtr->deleted) {
-			prevPtr = prevPtr->next;
-		}
-		*curPtr = prevPtr;
-		(*curPtr)->countRef++;
-	}
+		std::shared_mutex mutex;
 
 private:
-
-	std::shared_mutex m;
-
-	std::condition_variable_any cv;
-
-	std::atomic<int> _size;
-
-	std::atomic<int> realSize;
-
 	Node<T>* head;
-
 	Node<T>* tail;
 
-	Node<T>* beginNode;
-
-	Node<T>* endNode;
+	TrxManager& trxManager;
 };
+
+
