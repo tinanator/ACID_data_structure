@@ -304,14 +304,21 @@ TEST_CASE("Multi thread") {
 
 		int count = 100;
 
-		for (int tc = 2; tc <= 5; tc++) {
+
+
+		for (int tc = 2; tc <= 10; tc++) {
+
+			int threadCount = tc;
+
+			std::latch q{ threadCount };
+
 			ConsistentList<int> list;
 
 			for (int i = 0; i < count; i++) {
 				list.push_back(0);
 			}
 
-			auto push = [&](int threadNum) {
+			auto push = [&q, &list, &count](int threadNum) {
 				int itersCount = 1000;
 				std::vector<Iterator<int>> invalidIterators;
 				std::vector<Iterator<int>> iterators;
@@ -320,6 +327,11 @@ TEST_CASE("Multi thread") {
 					list.advance(it, rand() % count);
 					iterators.push_back(it);
 				}
+
+
+				q.count_down();
+				q.wait();
+
 				int val = 0;
 				int insertedCount = 1000;
 				bool toStop = false;
@@ -328,14 +340,9 @@ TEST_CASE("Multi thread") {
 						if (toStop) {
 							break;
 						}
-						int r = rand() % 3;
+						int r = rand() % 2;
 						switch (r) {
 						case 0:
-							if (iterators[i] != list.end()) {
-								iterators[i]++;
-							}
-							break;
-						case 1:
 							iterators[i] = list.insert(iterators[i], val + threadNum);
 							insertedCount--;
 							if (insertedCount <= 0) {
@@ -344,10 +351,13 @@ TEST_CASE("Multi thread") {
 							//std::cout << std::to_string(insertedCount) + ' ' << std::endl;
 							val++;
 							break;
-						case 2:
+						case 1:
 							invalidIterators.push_back(iterators[i]);
 							iterators[i] = list.erase(iterators[i]);
 							break;
+						}
+						if (iterators[i] != list.end()) {
+							iterators[i]++;
 						}
 					}
 				}
@@ -355,7 +365,7 @@ TEST_CASE("Multi thread") {
 
 			std::vector<std::thread> threads;
 
-			int threadCount = tc;
+
 
 			auto tstart = clock();
 
@@ -380,9 +390,9 @@ TEST_CASE("Multi thread") {
 	SECTION("1") {
 		std::cout << "---------TEST----------" << std::endl;
 
-		for (int tc = 2; tc <= 5; tc++) {
+		for (int tc = 2; tc <= 10; tc++) {
 
-			int elemToInsert = 10;
+			int elemToInsert = 1000;
 			int threadCount = tc;
 			int itersCount = elemToInsert / threadCount;
 			ConsistentList<int> list;
@@ -464,7 +474,7 @@ TEST_CASE("Multi thread") {
 
 		int count = 200000;
 
-		for (int tc = 2; tc <= 5; tc++) {
+		for (int tc = 2; tc <= 10; tc++) {
 			int threadCount = tc;
 
 			int elemCount = count / tc;

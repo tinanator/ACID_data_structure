@@ -223,8 +223,6 @@ public:
 		Node<T>* node = pos.pnode;
 
 
-		
-
 		for (bool retry = true; retry;) {
 			retry = false;
 
@@ -240,8 +238,12 @@ public:
 			auto lock2 = std::unique_lock(node->mutex);
 
 
-			while (node->deleted) {
-				node = node->next;
+			//while (node->deleted) {
+			//	node = node->next;
+			//}
+
+			if (node->deleted) {
+				return pos;
 			}
 
 			if (prev->next == node) {
@@ -460,6 +462,7 @@ private:
 	void acquire(Node<T>** curPtr, Node<T>* nextPtr) {
 		if (*curPtr == endNode) {
 			std::cout << "ERROR";
+			return;
 		}
 		while (nextPtr->deleted) {
 			nextPtr = nextPtr->next;
@@ -471,6 +474,7 @@ private:
 	void acquireBack(Node<T>** curPtr, Node<T>* prevPtr) {
 		if (*curPtr == beginNode) {
 			std::cout << "ERROR";
+			return;
 		}
 		while (prevPtr->deleted) {
 			prevPtr = prevPtr->prev;
