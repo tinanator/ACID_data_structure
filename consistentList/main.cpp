@@ -661,11 +661,96 @@ TEST_CASE("Transaction") {
 
 	}
 
-	SECTION("multi thread") {
+	SECTION("uniq writer") {
 		TrxManager trxManager;
 		List<int> list(trxManager);
 
 
+		auto func = [&list, &trxManager](int tnum) {
+			auto trx = trxManager.beginWrite();
+
+			for (int i = 0; i < 3; i++) {
+				list.insert(list.begin(trx), i + 3 * tnum);
+			}
+
+			auto lock = std::unique_lock(list.mutex);
+
+			int i = 0;
+			auto node = list.getHead();
+			while (node) {
+				std::cout << node->val << " ";
+				node = node->next;
+				i++;
+			}
+			std::cout << std::endl;
+			lock.unlock();
+
+			trxManager.commit(trx);
+		};
+
+		std::vector<std::thread> threads;
+		for (int i = 0; i < 5; i++) {
+			threads.push_back(std::thread(func, i));
+		}
+
+		for (auto& t : threads) {
+			t.join();
+		}
+	}
+
+	SECTION("multi readers") {
+		std::cout << "-------------" << std::endl;
+		TrxManager trxManager;
+		List<int> list(trxManager);
+
+		auto func = [&list, &trxManager](int tnum) {
+
+			auto r = trxManager.beginRead();
+
+			auto trx = trxManager.beginWrite();
+
+			for (int i = 0; i < 3; i++) {
+				list.insert(list.begin(trx), i + 3 * tnum);
+			}
+
+			auto lock = std::unique_lock(list.mutex);
+
+			int i = 0;
+			auto node = list.getHead();
+			std::cout << "INSERTED" << std::endl;
+			while (node) {
+				std::cout << node->val << " ";
+				node = node->next;
+				i++;
+			}
+			std::cout << std::endl;
+			lock.unlock();
+
+			std::cout << "BEFORE COMMIT" << std::endl;
+
+			i = 0;
+			for (auto it = list.begin(r); it != list.end(r); it++) {
+				std::cout << *it << " ";
+			}
+
+			trxManager.commit(trx);
+
+			std::cout << "AFTER COMMIT" << std::endl;
+
+			i = 0;
+			for (auto it = list.begin(r); it != list.end(r); it++) {
+				std::cout << *it << " ";
+			}
+		};
+
+		std::vector<std::thread> threads;
+		for (int i = 0; i < 5; i++) {
+			threads.push_back(std::thread(func, i));
+		}
+
+		for (auto& t : threads) {
+			t.join();
+		}
 
 	}
 }
