@@ -32,6 +32,9 @@ public:
 
 	Iterator<T>& operator ++() {
 		auto lock = std::shared_lock(pnode->mutex);
+		if (*this == list->end()) {
+			return *this;
+		}
 		Node<T>* prev = pnode;
 		list->acquire(&pnode, pnode->next);
 		list->release(prev);
@@ -46,6 +49,9 @@ public:
 
 	Iterator<T>& operator --() {
 		auto lock = std::shared_lock(pnode->mutex);
+		if (*this == list->begin()) {
+			return *this;
+		}
 		Node<T>* prev = pnode;
 		list->acquireBack(&pnode, pnode->prev);
 		list->release(prev);

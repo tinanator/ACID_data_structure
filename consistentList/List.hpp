@@ -230,17 +230,15 @@ public:
 			auto lock = std::shared_lock(node->mutex);
 
 			auto prev = node->prev;
+			if (prev->countRef == 0) {
+				int a = 0;
+			}
 			assert(prev->countRef);
 
 			lock.unlock();
 
 			auto lock1 = std::unique_lock(prev->mutex);
 			auto lock2 = std::unique_lock(node->mutex);
-
-
-			//while (node->deleted) {
-			//	node = node->next;
-			//}
 
 			if (node->deleted) {
 				return pos;
@@ -268,53 +266,6 @@ public:
 
 		}
 
-		return Iterator<T>(&(node->prev), this);
-	}
-
-	Iterator<T> insert_worked(Iterator<T> pos, const T& val) {
-
-		Node<T>* node = pos.pnode;
-
-		if (node->deleted) {
-			return pos;
-		}
-
-		for (bool retry = true; retry;) {
-			retry = false;
-
-
-			node->mutex.lock();
-
-			auto prev = node->prev;
-			assert(prev->countRef);
-
-			node->mutex.unlock();
-
-			prev->mutex.lock();
-			node->mutex.lock();
-
-			if (prev->next == node) {
-
-				Node<T>* newNode = new Node<T>();
-				newNode->val = val;
-
-				newNode->next = node;
-				newNode->prev = prev;
-				node->prev = newNode;
-				prev->next = newNode;
-				newNode->countRef += 2;
-
-				_size++;
-
-			}
-			else {
-				retry = true;
-			}
-			prev->mutex.unlock();
-			node->mutex.unlock();
-
-		}
-	
 		return Iterator<T>(&(node->prev), this);
 	}
 

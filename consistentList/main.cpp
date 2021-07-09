@@ -299,12 +299,11 @@ TEST_CASE() {
 
 TEST_CASE("Multi thread") {
 
+
 	SECTION("0") {
 		std::cout << "---------TEST 0----------" << std::endl;
 
 		int count = 100;
-
-
 
 		for (int tc = 2; tc <= 10; tc++) {
 
@@ -319,8 +318,7 @@ TEST_CASE("Multi thread") {
 			}
 
 			auto push = [&q, &list, &count](int threadNum) {
-				int itersCount = 1000;
-				std::vector<Iterator<int>> invalidIterators;
+				int itersCount = 10000;
 				std::vector<Iterator<int>> iterators;
 				for (int i = 0; i < itersCount; i++) {
 					auto it = list.begin();
@@ -328,37 +326,18 @@ TEST_CASE("Multi thread") {
 					iterators.push_back(it);
 				}
 
-
 				q.count_down();
 				q.wait();
 
-				int val = 0;
-				int insertedCount = 1000;
-				bool toStop = false;
-				while (insertedCount > 0) {
-					for (int i = 0; i < iterators.size(); i++) {
-						if (toStop) {
-							break;
-						}
-						int r = rand() % 2;
-						switch (r) {
-						case 0:
-							iterators[i] = list.insert(iterators[i], val + threadNum);
-							insertedCount--;
-							if (insertedCount <= 0) {
-								toStop = true;
-							}
-							//std::cout << std::to_string(insertedCount) + ' ' << std::endl;
-							val++;
-							break;
-						case 1:
-							invalidIterators.push_back(iterators[i]);
-							iterators[i] = list.erase(iterators[i]);
-							break;
-						}
-						if (iterators[i] != list.end()) {
-							iterators[i]++;
-						}
+				for (auto& it : iterators) {
+					int r = rand() % 2;
+					switch (r) {
+					case 0:
+						list.insert(it, threadNum);
+						break;
+					case 1:
+						list.erase(it);
+						break;
 					}
 				}
 			};
