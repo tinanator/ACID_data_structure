@@ -10,4 +10,4 @@ task_3: Medium-graining. Only pointers which undergo operations are locked and t
 
 task_4: Fine graining. Garbage collection is implemented. 
 
-task_6
+task_6: Used transactions and versions for list operations
